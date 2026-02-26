@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+*.egg
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Generated demo logs
+examples/*_log.json
+examples/*_log.txt
+
+# pytest
+.pytest_cache/
