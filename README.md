@@ -123,7 +123,3 @@ The core contribution is the structured schema for model-to-model epistemic comm
 **ExecutorFeedback** — The executor's report: `observations`, `escalation_type`, `challenged_beliefs` (with evidence), `new_evidence`, and `executor_recommendation`.
 
 **ThinkerAmendment** — The thinker's revision: `amendment_type` (revise/clarify/delegate/abort), `updated_beliefs`, `revised_steps`, and `guidance`.
-
-## License
-
-MIT
