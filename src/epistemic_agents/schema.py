@@ -34,6 +34,11 @@ class Belief(BaseModel):
         default_factory=list,
         description="Background assumptions that must hold for this belief to be valid",
     )
+    depends_on: list[str] = Field(
+        default_factory=list,
+        description="IDs of beliefs this one depends on — if upstream beliefs are "
+        "challenged, this belief should be reviewed too",
+    )
 
 
 class DecisionBoundary(BaseModel):
@@ -61,6 +66,11 @@ class StrategicHandoff(BaseModel):
         default_factory=list,
         description="What the thinker explicitly does not know",
     )
+    meta_reasoning: str = Field(
+        default="",
+        description="The thinker's self-reflection: potential flaws in its own plan, "
+        "assumptions it might be overconfident about, reasoning patterns it notices",
+    )
 
 
 class EscalationType(str, Enum):
@@ -71,6 +81,26 @@ class EscalationType(str, Enum):
     DISCOVERY = "discovery"  # Found something the thinker didn't consider
     ASSUMPTION_VIOLATION = "assumption_violation"  # A key assumption was wrong
     RESOURCE_CONSTRAINT = "resource_constraint"  # Can't do what was asked
+    CONTEXT_SHIFT = "context_shift"  # Environment changed since analysis
+    RESOURCE_OPPORTUNITY = "resource_opportunity"  # Found a shortcut or better path
+    PARTIAL_SUCCESS = "partial_success"  # Worked but suboptimally
+    CONVERGENCE_FAILURE = "convergence_failure"  # Can't make further progress
+
+
+class EscalationSeverity(str, Enum):
+    """How urgently the thinker needs to respond."""
+
+    BLOCKING = "blocking"  # Cannot continue without thinker input
+    DEGRADED = "degraded"  # Can continue but quality/approach is compromised
+    INFORMATIONAL = "informational"  # FYI — no action needed, but thinker should know
+
+
+class Escalation(BaseModel):
+    """A single escalation from the executor to the thinker."""
+
+    type: EscalationType
+    severity: EscalationSeverity
+    detail: str = Field(description="What happened and why this is being escalated")
 
 
 class ChallengedBelief(BaseModel):
@@ -93,7 +123,13 @@ class ExecutorFeedback(BaseModel):
     )
     escalation_type: Optional[EscalationType] = Field(
         default=None,
-        description="Category of the issue, if escalating. None means no escalation needed.",
+        description="Primary escalation category, if escalating. None means no escalation needed. "
+        "For multiple escalations, use the escalations list.",
+    )
+    escalations: list[Escalation] = Field(
+        default_factory=list,
+        description="All escalations with type, severity, and detail. "
+        "Supports multiple simultaneous escalations.",
     )
     challenged_beliefs: list[ChallengedBelief] = Field(
         default_factory=list,
@@ -110,6 +146,10 @@ class ExecutorFeedback(BaseModel):
     executor_recommendation: Optional[str] = Field(
         default=None,
         description="The executor's suggested course of action, if it has one",
+    )
+    proposed_adjustments: Optional[str] = Field(
+        default=None,
+        description="Specific changes the executor suggests to the strategy or plan",
     )
     execution_result: Optional[str] = Field(
         default=None,
@@ -137,6 +177,18 @@ class ThinkerAmendment(BaseModel):
     revised_steps: Optional[list[str]] = Field(
         default=None,
         description="Updated plan steps, if the strategy changed. None means keep original steps.",
+    )
+    revised_decision_boundaries: Optional[list[DecisionBoundary]] = Field(
+        default=None,
+        description="Updated decision boundaries, if any changed. None means keep original.",
+    )
+    resolved_questions: list[str] = Field(
+        default_factory=list,
+        description="Open questions from the original handoff that are now answered",
+    )
+    new_open_questions: list[str] = Field(
+        default_factory=list,
+        description="New open questions discovered during this revision",
     )
     guidance: str = Field(description="Explanation of the revision and how to proceed")
     continue_from_step: Optional[int] = Field(
@@ -171,3 +223,125 @@ class ConversationLog(BaseModel):
         self.entries.append(
             ConversationEntry(role=role, entry_type=entry_type, content=content)
         )
+
+
+# ---------------------------------------------------------------------------
+# Multi-model panel models
+# ---------------------------------------------------------------------------
+
+
+class ProviderPosition(BaseModel):
+    """A single model's analysis of a task."""
+
+    provider_name: str = Field(description="Name of the provider (e.g. 'claude', 'gemini')")
+    model_id: str = Field(description="Specific model used (e.g. 'opus', 'gemini-2.0-flash')")
+    beliefs: list[Belief] = Field(
+        default_factory=list,
+        description="Structured beliefs extracted from the analysis",
+    )
+    raw_analysis: str = Field(description="The model's full text analysis")
+
+
+class AgreementPoint(BaseModel):
+    """A point where multiple models agree."""
+
+    claim: str = Field(description="The shared claim or conclusion")
+    supporting_providers: list[str] = Field(
+        description="Names of providers that support this claim"
+    )
+    combined_confidence: ConfidenceLevel = Field(
+        description="Synthesized confidence level across providers"
+    )
+
+
+class TensionPoint(BaseModel):
+    """A point where models disagree or take different stances."""
+
+    claim: str = Field(description="The contested claim or topic")
+    positions: dict[str, str] = Field(
+        description="Mapping of provider name to their stance on the claim"
+    )
+    synthesis_notes: str = Field(
+        description="The synthesizer's assessment of this tension"
+    )
+
+
+class BlindSpot(BaseModel):
+    """Something only one model noticed that others missed."""
+
+    observation: str = Field(description="The insight or observation that was missed")
+    identified_by: str = Field(description="Provider that caught this")
+    missed_by: list[str] = Field(description="Providers that missed this")
+
+
+class UniqueInsight(BaseModel):
+    """A novel contribution from one model."""
+
+    insight: str = Field(description="The unique insight or framing")
+    source_provider: str = Field(description="Provider that contributed this")
+    relevance: str = Field(description="Why this insight matters for the task")
+
+
+class PanelSynthesis(BaseModel):
+    """The synthesizer's cross-model analysis output."""
+
+    task: str = Field(description="The original task that was analyzed")
+    provider_positions: list[ProviderPosition] = Field(
+        description="Each provider's individual analysis"
+    )
+    agreements: list[AgreementPoint] = Field(
+        default_factory=list,
+        description="Points where models converge",
+    )
+    tensions: list[TensionPoint] = Field(
+        default_factory=list,
+        description="Points where models diverge",
+    )
+    blind_spots: list[BlindSpot] = Field(
+        default_factory=list,
+        description="Observations caught by only one model",
+    )
+    unique_insights: list[UniqueInsight] = Field(
+        default_factory=list,
+        description="Novel contributions from individual models",
+    )
+    synthesized_strategy: str = Field(
+        description="Final strategy incorporating the best of all perspectives"
+    )
+    meta_confidence: str = Field(
+        description="Overall confidence assessment and caveats"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Verdict — concise TL;DR output
+# ---------------------------------------------------------------------------
+
+
+class Verdict(BaseModel):
+    """Concise decision-oriented summary distilled from a full analysis."""
+
+    decision_point: str = Field(
+        description="The key decision the user faces, stated as a question"
+    )
+    recommendation: str = Field(
+        description="1-3 sentence actionable recommendation"
+    )
+    confidence: ConfidenceLevel = Field(
+        description="Overall confidence in the recommendation"
+    )
+    key_risk: str = Field(
+        description="The single biggest failure mode or downside"
+    )
+    dissent: Optional[str] = Field(
+        default=None,
+        description="The strongest counterargument to the recommendation, if any",
+    )
+    tier_used: str = Field(
+        default="unknown",
+        description="Which analysis tier produced this: quick / standard / deep",
+    )
+    cost_tokens: Optional[int] = Field(
+        default=None,
+        description="Approximate total tokens consumed across all models",
+    )

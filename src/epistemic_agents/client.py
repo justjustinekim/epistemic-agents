@@ -24,6 +24,7 @@ def structured_request(
     system: str,
     user_message: str,
     response_model: Type[T],
+    timeout: int = 1200,
 ) -> T:
     """Send a request via Claude CLI and parse into a Pydantic model using --json-schema."""
     schema = response_model.model_json_schema()
@@ -41,7 +42,7 @@ def structured_request(
         input=user_message,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=timeout,
         env=_clean_env(),
     )
 
@@ -70,6 +71,7 @@ def plain_request(
     model: str,
     system: str,
     user_message: str,
+    timeout: int = 1200,
 ) -> str:
     """Send a plain text request via Claude CLI and return the text response."""
     result = subprocess.run(
@@ -83,7 +85,7 @@ def plain_request(
         input=user_message,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=timeout,
         env=_clean_env(),
     )
 

@@ -9,10 +9,13 @@ from epistemic_agents.schema import (
     ConfidenceLevel,
     ConversationLog,
     DecisionBoundary,
+    Escalation,
+    EscalationSeverity,
     EscalationType,
     ExecutorFeedback,
     StrategicHandoff,
     ThinkerAmendment,
+    Verdict,
 )
 
 
@@ -34,6 +37,24 @@ def test_belief_construction():
     assert b.id == "b1"
     assert b.confidence == ConfidenceLevel.MODERATE
     assert len(b.falsification_conditions) == 2
+    assert b.depends_on == []
+
+
+def test_belief_with_dependencies():
+    b1 = Belief(
+        id="b1",
+        claim="The API is RESTful",
+        confidence=ConfidenceLevel.HIGH,
+        justification="Documentation says REST",
+    )
+    b2 = Belief(
+        id="b2",
+        claim="We can use standard HTTP caching",
+        confidence=ConfidenceLevel.MODERATE,
+        justification="REST APIs support cache-control headers",
+        depends_on=["b1"],
+    )
+    assert b2.depends_on == ["b1"]
 
 
 def test_strategic_handoff_serialization():
@@ -62,6 +83,7 @@ def test_strategic_handoff_serialization():
             ),
         ],
         open_questions=["What is the exact data update frequency?"],
+        meta_reasoning="I might be anchoring on Redis without considering alternatives.",
     )
 
     # Serialize and deserialize
@@ -74,6 +96,39 @@ def test_strategic_handoff_serialization():
     assert roundtripped.beliefs[0].id == "b1"
     assert len(roundtripped.plan_steps) == 3
     assert roundtripped.decision_boundaries[0].escalate is True
+    assert roundtripped.meta_reasoning == "I might be anchoring on Redis without considering alternatives."
+
+
+def test_strategic_handoff_meta_reasoning_default():
+    handoff = StrategicHandoff(
+        intent="Test",
+        beliefs=[],
+        plan_steps=[],
+    )
+    assert handoff.meta_reasoning == ""
+
+
+def test_escalation_model():
+    esc = Escalation(
+        type=EscalationType.CONTEXT_SHIFT,
+        severity=EscalationSeverity.DEGRADED,
+        detail="The API endpoint was deprecated since the thinker analyzed",
+    )
+    assert esc.type == EscalationType.CONTEXT_SHIFT
+    assert esc.severity == EscalationSeverity.DEGRADED
+
+
+def test_new_escalation_types():
+    assert EscalationType.CONTEXT_SHIFT.value == "context_shift"
+    assert EscalationType.RESOURCE_OPPORTUNITY.value == "resource_opportunity"
+    assert EscalationType.PARTIAL_SUCCESS.value == "partial_success"
+    assert EscalationType.CONVERGENCE_FAILURE.value == "convergence_failure"
+
+
+def test_escalation_severity_levels():
+    assert EscalationSeverity.BLOCKING.value == "blocking"
+    assert EscalationSeverity.DEGRADED.value == "degraded"
+    assert EscalationSeverity.INFORMATIONAL.value == "informational"
 
 
 def test_executor_feedback_with_escalation():
@@ -84,6 +139,13 @@ def test_executor_feedback_with_escalation():
             "Discovered data updates every 30 seconds for flash sales",
         ],
         escalation_type=EscalationType.ASSUMPTION_VIOLATION,
+        escalations=[
+            Escalation(
+                type=EscalationType.ASSUMPTION_VIOLATION,
+                severity=EscalationSeverity.BLOCKING,
+                detail="Infrastructure is serverless — no persistent memory",
+            ),
+        ],
         challenged_beliefs=[
             ChallengedBelief(
                 belief_id="b1",
@@ -98,8 +160,30 @@ def test_executor_feedback_with_escalation():
     )
 
     assert feedback.escalation_type == EscalationType.ASSUMPTION_VIOLATION
+    assert len(feedback.escalations) == 1
+    assert feedback.escalations[0].severity == EscalationSeverity.BLOCKING
     assert len(feedback.challenged_beliefs) == 1
     assert feedback.decision_needed is True
+
+
+def test_executor_feedback_multiple_escalations():
+    feedback = ExecutorFeedback(
+        step_completed=1,
+        observations=["Partial progress"],
+        escalations=[
+            Escalation(
+                type=EscalationType.PARTIAL_SUCCESS,
+                severity=EscalationSeverity.DEGRADED,
+                detail="Cache works but hit rate is only 40%",
+            ),
+            Escalation(
+                type=EscalationType.DISCOVERY,
+                severity=EscalationSeverity.INFORMATIONAL,
+                detail="Found an undocumented batch API that could be more efficient",
+            ),
+        ],
+    )
+    assert len(feedback.escalations) == 2
 
 
 def test_executor_feedback_no_escalation():
@@ -110,8 +194,18 @@ def test_executor_feedback_no_escalation():
     )
 
     assert feedback.escalation_type is None
+    assert feedback.escalations == []
     assert feedback.decision_needed is False
     assert feedback.execution_result is not None
+
+
+def test_executor_feedback_proposed_adjustments():
+    feedback = ExecutorFeedback(
+        step_completed=1,
+        observations=["Found issue"],
+        proposed_adjustments="Skip step 3 and go directly to step 4",
+    )
+    assert feedback.proposed_adjustments is not None
 
 
 def test_thinker_amendment():
@@ -145,6 +239,38 @@ def test_thinker_amendment():
     assert len(amendment.revised_steps) == 3
 
 
+def test_thinker_amendment_new_fields():
+    amendment = ThinkerAmendment(
+        amendment_type=AmendmentType.REVISE,
+        updated_beliefs=[],
+        revised_decision_boundaries=[
+            DecisionBoundary(
+                condition="If latency exceeds 100ms",
+                action="Switch to edge caching",
+                escalate=False,
+            ),
+        ],
+        resolved_questions=["What is the exact data update frequency?"],
+        new_open_questions=["Is the CDN configured for dynamic content?"],
+        guidance="Updated boundaries and resolved the frequency question.",
+        continue_from_step=1,
+    )
+    assert amendment.revised_decision_boundaries is not None
+    assert len(amendment.revised_decision_boundaries) == 1
+    assert amendment.resolved_questions == ["What is the exact data update frequency?"]
+    assert len(amendment.new_open_questions) == 1
+
+
+def test_thinker_amendment_defaults():
+    amendment = ThinkerAmendment(
+        amendment_type=AmendmentType.CLARIFY,
+        guidance="Just proceed as planned.",
+    )
+    assert amendment.revised_decision_boundaries is None
+    assert amendment.resolved_questions == []
+    assert amendment.new_open_questions == []
+
+
 def test_conversation_log():
     log = ConversationLog(task="Test task")
 
@@ -171,12 +297,49 @@ def test_conversation_log():
     assert "All good" in json_str
 
 
+def test_verdict_construction():
+    v = Verdict(
+        decision_point="Should we use Redis?",
+        recommendation="Yes, use Redis with 60s TTL for the hot path.",
+        confidence=ConfidenceLevel.HIGH,
+        key_risk="Redis adds infrastructure complexity",
+        dissent="Memcached is simpler if we only need KV cache",
+        tier_used="deep",
+        cost_tokens=50000,
+    )
+    assert v.confidence == ConfidenceLevel.HIGH
+    assert v.dissent is not None
+    assert v.cost_tokens == 50000
+
+
+def test_verdict_defaults():
+    v = Verdict(
+        decision_point="Use X or Y?",
+        recommendation="Use X.",
+        confidence=ConfidenceLevel.MODERATE,
+        key_risk="X has less community support",
+    )
+    assert v.dissent is None
+    assert v.tier_used == "unknown"
+    assert v.cost_tokens is None
+
+
+def test_verdict_json_schema():
+    schema = Verdict.model_json_schema()
+    assert "decision_point" in schema["properties"]
+    assert "recommendation" in schema["properties"]
+    assert "key_risk" in schema["properties"]
+
+
 def test_schema_json_generation():
     """Verify we can generate a clean JSON schema for tool_use."""
     schema = StrategicHandoff.model_json_schema()
     assert "properties" in schema
     assert "intent" in schema["properties"]
     assert "beliefs" in schema["properties"]
+    assert "meta_reasoning" in schema["properties"]
 
     feedback_schema = ExecutorFeedback.model_json_schema()
     assert "escalation_type" in feedback_schema["properties"]
+    assert "escalations" in feedback_schema["properties"]
+    assert "proposed_adjustments" in feedback_schema["properties"]

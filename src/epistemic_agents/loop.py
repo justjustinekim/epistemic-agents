@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+from typing import TYPE_CHECKING
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -10,11 +13,16 @@ from epistemic_agents.executor import Executor
 from epistemic_agents.schema import (
     AmendmentType,
     ConversationLog,
+    EscalationSeverity,
     ExecutorFeedback,
     StrategicHandoff,
     ThinkerAmendment,
 )
 from epistemic_agents.thinker import Thinker
+
+if TYPE_CHECKING:
+    from epistemic_agents.ledger import BeliefLedger
+    from epistemic_agents.panel import ModelPanel
 
 console = Console()
 
@@ -28,11 +36,15 @@ class EpistemicLoop:
         executor: Executor,
         max_rounds: int = 5,
         verbose: bool = True,
+        ledger: BeliefLedger | None = None,
+        panel: ModelPanel | None = None,
     ):
         self.thinker = thinker
         self.executor = executor
         self.max_rounds = max_rounds
         self.verbose = verbose
+        self._ledger = ledger
+        self._panel = panel
 
     def run(self, task: str) -> ConversationLog:
         """Run the full epistemic loop for a given task."""
@@ -76,8 +88,16 @@ class EpistemicLoop:
             if self.verbose:
                 _print_feedback(feedback)
 
+            # Step 5: If executor hits BLOCKING escalation and panel is available,
+            # trigger a targeted panel query for additional perspectives
+            if self._panel and _has_blocking_escalation(feedback):
+                feedback = self._panel_escalation(feedback, current_handoff, task)
+
             # Check if we've converged (no escalation needed)
-            if not feedback.decision_needed and feedback.escalation_type is None:
+            has_escalation = (
+                feedback.escalation_type is not None or len(feedback.escalations) > 0
+            )
+            if not feedback.decision_needed and not has_escalation:
                 log.converged = True
                 if self.verbose:
                     console.print(
@@ -108,15 +128,8 @@ class EpistemicLoop:
                     )
                 break
 
-            # Update the handoff if steps were revised
-            if amendment.revised_steps:
-                current_handoff = StrategicHandoff(
-                    intent=current_handoff.intent,
-                    beliefs=amendment.updated_beliefs or current_handoff.beliefs,
-                    plan_steps=amendment.revised_steps,
-                    decision_boundaries=current_handoff.decision_boundaries,
-                    open_questions=current_handoff.open_questions,
-                )
+            # Update the handoff with amendment changes
+            current_handoff = _apply_amendment(current_handoff, amendment)
 
         else:
             if self.verbose:
@@ -127,7 +140,132 @@ class EpistemicLoop:
                     )
                 )
 
+        # Record belief outcomes to ledger (must be outside the for/else)
+        if self._ledger:
+            records = self._ledger.record_outcomes(log)
+            if self.verbose and records:
+                console.print(
+                    f"\n  [dim]Ledger: recorded {len(records)} belief outcome(s)[/dim]"
+                )
+
         return log
+
+
+    def _panel_escalation(
+        self,
+        feedback: ExecutorFeedback,
+        handoff: StrategicHandoff,
+        task: str,
+    ) -> ExecutorFeedback:
+        """Trigger a targeted panel query when executor hits a blocking escalation."""
+        from epistemic_agents.synthesizer import Synthesizer
+
+        blocking = [
+            e for e in feedback.escalations
+            if e.severity == EscalationSeverity.BLOCKING
+        ]
+        if not blocking:
+            return feedback
+
+        # Build a focused query about the blocking issues
+        issues = "\n".join(
+            f"- [{e.type.value}] {e.detail}" for e in blocking
+        )
+        panel_task = (
+            f"# Original Task\n{task}\n\n"
+            f"# Current Strategy\nIntent: {handoff.intent}\n\n"
+            f"# BLOCKING ESCALATION from executor\n"
+            f"The executor has hit blocking issues and cannot continue:\n{issues}\n\n"
+            f"# Executor's Observations\n"
+            + "\n".join(f"- {o}" for o in feedback.observations)
+            + "\n\nProvide your analysis: Is the executor right to escalate? "
+            "What approaches could unblock this? What is the executor missing?"
+        )
+
+        if self.verbose:
+            console.print(
+                Panel(
+                    f"PANEL ESCALATION: {len(blocking)} blocking issue(s) — consulting panel...",
+                    style="bold magenta",
+                )
+            )
+
+        positions = self._panel.run(panel_task)
+
+        # Synthesize panel advice
+        synthesizer = Synthesizer()
+        synthesis = synthesizer.synthesize(panel_task, positions)
+
+        if self.verbose:
+            console.print(
+                f"  [dim]Panel returned {len(positions)} positions on the escalation[/dim]"
+            )
+
+        # Enrich the feedback with panel context so the thinker gets it
+        panel_context = (
+            f"\n\n--- PANEL CONSULTATION ON BLOCKING ESCALATION ---\n"
+            f"Strategy: {synthesis.synthesized_strategy}\n"
+            f"Confidence: {synthesis.meta_confidence}"
+        )
+        if synthesis.agreements:
+            panel_context += "\nAgreements: " + "; ".join(
+                a.claim for a in synthesis.agreements
+            )
+        if synthesis.tensions:
+            panel_context += "\nTensions: " + "; ".join(
+                t.claim for t in synthesis.tensions
+            )
+
+        # Append panel context to executor recommendation
+        enriched = feedback.model_copy()
+        current_rec = enriched.executor_recommendation or ""
+        enriched.executor_recommendation = current_rec + panel_context
+        return enriched
+
+
+def _has_blocking_escalation(feedback: ExecutorFeedback) -> bool:
+    """Check if feedback contains any BLOCKING severity escalation."""
+    return any(
+        e.severity == EscalationSeverity.BLOCKING for e in feedback.escalations
+    )
+
+
+def _apply_amendment(
+    handoff: StrategicHandoff, amendment: ThinkerAmendment
+) -> StrategicHandoff:
+    """Merge amendment into handoff, preserving untouched state."""
+    # Merge beliefs by ID: updated beliefs override, others preserved
+    if amendment.updated_beliefs:
+        updated_ids = {b.id for b in amendment.updated_beliefs}
+        merged = [b for b in handoff.beliefs if b.id not in updated_ids]
+        merged.extend(amendment.updated_beliefs)
+        beliefs = merged
+    else:
+        beliefs = handoff.beliefs
+
+    # Use revised steps if provided, otherwise keep original
+    steps = amendment.revised_steps or handoff.plan_steps
+
+    # Use revised boundaries if provided, otherwise keep original
+    boundaries = (
+        amendment.revised_decision_boundaries
+        if amendment.revised_decision_boundaries is not None
+        else handoff.decision_boundaries
+    )
+
+    # Update open questions: remove resolved, add new
+    open_qs = [
+        q for q in handoff.open_questions if q not in amendment.resolved_questions
+    ]
+    open_qs.extend(amendment.new_open_questions)
+
+    return StrategicHandoff(
+        intent=handoff.intent,
+        beliefs=beliefs,
+        plan_steps=steps,
+        decision_boundaries=boundaries,
+        open_questions=open_qs,
+    )
 
 
 def _last_amendment(log: ConversationLog) -> ThinkerAmendment | None:
@@ -152,6 +290,8 @@ def _print_handoff(handoff: StrategicHandoff) -> None:
             f"  [{conf_color}][{b.confidence.value.upper()}][/{conf_color}] "
             f"[bold]{b.id}[/bold]: {b.claim}"
         )
+        if b.depends_on:
+            console.print(f"    Depends on: {', '.join(b.depends_on)}")
         if b.falsification_conditions:
             for fc in b.falsification_conditions:
                 console.print(f"    Falsifiable if: {fc}")
@@ -162,6 +302,9 @@ def _print_handoff(handoff: StrategicHandoff) -> None:
         console.print(f"\n[bold]Open questions:[/bold]")
         for q in handoff.open_questions:
             console.print(f"  ? {q}")
+    if handoff.meta_reasoning:
+        console.print(f"\n[bold]Meta-reasoning:[/bold]")
+        console.print(f"  {handoff.meta_reasoning}")
     console.print()
 
 
@@ -172,6 +315,16 @@ def _print_feedback(feedback: ExecutorFeedback) -> None:
         console.print(
             f"  [bold red]ESCALATION: {feedback.escalation_type.value}[/bold red]"
         )
+    for esc in feedback.escalations:
+        sev_color = {
+            "blocking": "red",
+            "degraded": "yellow",
+            "informational": "dim",
+        }.get(esc.severity.value, "white")
+        console.print(
+            f"  [{sev_color}][{esc.severity.value.upper()}] "
+            f"{esc.type.value}:[/{sev_color}] {esc.detail}"
+        )
     for obs in feedback.observations:
         console.print(f"  Observation: {obs}")
     for cb in feedback.challenged_beliefs:
@@ -180,6 +333,8 @@ def _print_feedback(feedback: ExecutorFeedback) -> None:
         )
     if feedback.executor_recommendation:
         console.print(f"  Recommendation: {feedback.executor_recommendation}")
+    if feedback.proposed_adjustments:
+        console.print(f"  Proposed adjustments: {feedback.proposed_adjustments}")
     if feedback.execution_result:
         console.print(f"  Result: {feedback.execution_result}")
     console.print()

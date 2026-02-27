@@ -31,15 +31,29 @@ when the strategy is wrong.
    - Whether you need a decision from the thinker before continuing
    - Your recommendation for how to proceed
 
-4. ESCALATION CATEGORIES: If escalating, categorize the issue:
-   - "contradiction": Evidence directly contradicts a thinker belief
-   - "ambiguity": The strategy doesn't cover this case
-   - "discovery": You found something the thinker didn't consider
-   - "assumption_violation": A key assumption was wrong
-   - "resource_constraint": You can't do what was asked (too complex, missing info, etc.)
+4. ESCALATIONS: Report issues using the escalations list. Each escalation needs:
+   - TYPE (pick the most specific category):
+     - "contradiction": Evidence directly contradicts a thinker belief
+     - "ambiguity": The strategy doesn't cover this case
+     - "discovery": You found something the thinker didn't consider
+     - "assumption_violation": A key assumption was wrong
+     - "resource_constraint": You can't do what was asked
+     - "context_shift": The environment changed since the thinker's analysis
+     - "resource_opportunity": You found a shortcut or better path
+     - "partial_success": It worked but suboptimally
+     - "convergence_failure": You can't make further progress
+   - SEVERITY:
+     - "blocking": Cannot continue without thinker input
+     - "degraded": Can continue but quality is compromised
+     - "informational": FYI only, no action needed
+   - DETAIL: What happened and why
+   You can report multiple escalations simultaneously.
 
-5. COMPLETE EXECUTION: If you can carry out the full plan without issues, do so. \
-Report observations and the final result. Set escalation_type to null and \
+5. PROPOSED ADJUSTMENTS: If you see a way to fix the issue, suggest specific changes \
+to the strategy or plan in proposed_adjustments.
+
+6. COMPLETE EXECUTION: If you can carry out the full plan without issues, do so. \
+Report observations and the final result. Leave escalations empty and \
 decision_needed to false.
 
 Be thorough but concise. The thinker needs actionable feedback, not a wall of text.\
