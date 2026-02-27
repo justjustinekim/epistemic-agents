@@ -186,65 +186,67 @@ class Orchestrator:
 
     def _run_deep(self, task: str) -> OrchestratorResult:
         """Deep tier: full panel debate + synthesis + refutation, then thinker loop."""
+        import sys
         from epistemic_agents.panel import ModelPanel
 
         if not self._panel:
             # Fall back to standard if no panel configured
             return self._run_standard(task)
 
+        def _log(msg: str) -> None:
+            if self._verbose:
+                print(msg, file=sys.stderr)
+
         # Phase 1: Panel debate
-        rounds = self._panel.debate(task=task, rounds=3)
+        _log("[deep] Phase 1: Multi-round panel debate...")
+        t0 = time.time()
+
+        def _on_round(round_num: int, positions: list) -> None:
+            label = "Initial Analysis" if round_num == 1 else f"Debate Round {round_num - 1}"
+            names = [p.provider_name for p in positions]
+            _log(f"[deep]   {label} — {len(positions)} responses: {', '.join(names)}")
+
+        rounds = self._panel.debate(task=task, rounds=3, on_round=_on_round)
         if not any(rounds):
             return self._run_standard(task)
+        total_responses = sum(len(r) for r in rounds)
+        _log(f"[deep]   Debate complete: {len(rounds)} rounds, {total_responses} responses in {time.time()-t0:.1f}s")
 
         # Phase 2: Synthesize
+        _log("[deep] Phase 2: Cross-model synthesis...")
+        t0 = time.time()
         synthesizer = Synthesizer(model=self._thinker_model)
         synthesis = synthesizer.synthesize_debate(task, rounds)
+        _log(f"[deep]   Synthesis complete in {time.time()-t0:.1f}s")
 
         # Phase 3: Refutation
+        _log("[deep] Phase 3: Panel refutation...")
+        t0 = time.time()
         refutations = self._panel.refute(task, rounds, synthesis)
+        _log(f"[deep]   {len(refutations)} refutations in {time.time()-t0:.1f}s")
 
         # Phase 4: Re-synthesis
+        _log("[deep] Phase 4: Final re-synthesis (post-refutation)...")
+        t0 = time.time()
         final_synthesis = synthesizer.resynthesize(task, rounds, synthesis, refutations)
+        _log(f"[deep]   Re-synthesis complete in {time.time()-t0:.1f}s")
 
-        # Phase 5: Run thinker-executor loop with panel context
-        calibration = ""
-        if self._ledger:
-            calibration = self._ledger.calibration_context()
-
-        thinker = Thinker(
-            model=self._thinker_model,
-            panel=self._panel,
-            calibration_context=calibration,
-        )
-        executor = Executor(model=self._executor_model)
-        loop = EpistemicLoop(
-            thinker=thinker,
-            executor=executor,
-            verbose=self._verbose,
-            ledger=self._ledger,
-        )
-        log = loop.run(
-            f"{task}\n\n--- PANEL SYNTHESIS (from multi-model debate) ---\n"
-            f"{final_synthesis.synthesized_strategy}"
-        )
-
-        handoff = _extract_final_handoff(log)
-
+        # Phase 5: Generate verdict directly from panel synthesis
+        # The panel debate + synthesis + refutation + re-synthesis IS the deep analysis.
+        # Running an additional thinker-executor loop is redundant and risks context overflow.
+        _log("[deep] Phase 5: Generating verdict...")
+        t0 = time.time()
         verdict = generate_verdict(
             task=task,
             tier="deep",
-            handoff=handoff,
-            conversation_log=log,
             panel_synthesis=final_synthesis,
             model=self._verdict_model,
         )
+        _log(f"[deep]   Verdict generated in {time.time()-t0:.1f}s")
 
         return OrchestratorResult(
             tier=Tier.DEEP,
             verdict=verdict,
-            handoff=handoff,
-            conversation_log=log,
             panel_synthesis=final_synthesis,
         )
 
