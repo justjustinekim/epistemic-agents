@@ -28,6 +28,9 @@ from epistemic_agents.providers import (
     ClaudeProvider,
     OpenAICompatProvider,
     GeminiProvider,
+    VirtualPanelist,
+    create_virtual_panelists,
+    CodeExecutorProvider,
 )
 from epistemic_agents.ledger import BeliefLedger, BeliefOutcome, BeliefRecord
 from epistemic_agents.bis import importance_scores, rank_beliefs, cascade_falsify
@@ -37,6 +40,7 @@ from epistemic_agents.synthesizer import Synthesizer
 from epistemic_agents.orchestrator import Orchestrator, Tier, OrchestratorResult, generate_verdict
 from epistemic_agents.tracker import UsageTracker, ProviderUsage, ProviderContribution, SessionStats
 from epistemic_agents.feedback import SessionFeedback, FeedbackLog, collect_feedback
+from epistemic_agents.rag import build_rag_context
 
 __all__ = [
     # Core epistemic protocol
@@ -77,6 +81,9 @@ __all__ = [
     "ClaudeProvider",
     "OpenAICompatProvider",
     "GeminiProvider",
+    "VirtualPanelist",
+    "create_virtual_panelists",
+    "CodeExecutorProvider",
     "get_available_providers",
     "ModelPanel",
     "Synthesizer",
@@ -94,4 +101,6 @@ __all__ = [
     "SessionFeedback",
     "FeedbackLog",
     "collect_feedback",
+    # RAG
+    "build_rag_context",
 ]

@@ -10,12 +10,19 @@ from epistemic_agents.providers.openai_compat import OpenAICompatProvider
 from epistemic_agents.providers.gemini import GeminiProvider
 
 
-def get_available_providers() -> list[BaseProvider]:
+def get_available_providers(
+    include_code_executor: bool = False,
+) -> list[BaseProvider]:
     """Return all providers that have valid configuration.
 
     Claude is always available (uses CLI). Other providers require API keys
     set via environment variables.
+
+    Args:
+        include_code_executor: If True, include the CodeExecutorProvider.
     """
+    from epistemic_agents.providers.code_executor import CodeExecutorProvider
+
     providers: list[BaseProvider] = [ClaudeProvider()]
 
     google_key = os.environ.get("GOOGLE_API_KEY", "")
@@ -37,5 +44,12 @@ def get_available_providers() -> list[BaseProvider]:
     openai_key = os.environ.get("OPENAI_API_KEY", "")
     if openai_key:
         providers.append(OpenAICompatProvider.gpt(api_key=openai_key))
+
+    perplexity_key = os.environ.get("PERPLEXITY_API_KEY", "")
+    if perplexity_key:
+        providers.append(OpenAICompatProvider.perplexity(api_key=perplexity_key))
+
+    if include_code_executor:
+        providers.append(CodeExecutorProvider())
 
     return providers

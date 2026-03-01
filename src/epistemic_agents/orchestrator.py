@@ -21,7 +21,9 @@ from epistemic_agents.synthesizer import Synthesizer
 from epistemic_agents.thinker import Thinker
 
 if TYPE_CHECKING:
+    from epistemic_agents.feedback import FeedbackLog
     from epistemic_agents.panel import ModelPanel
+    from epistemic_agents.tracker import UsageTracker
 
 
 class Tier(str, Enum):
@@ -62,6 +64,8 @@ class Orchestrator:
         executor_model: str = "sonnet",
         verdict_model: str = "haiku",
         verbose: bool = True,
+        feedback_log: FeedbackLog | None = None,
+        tracker: UsageTracker | None = None,
     ) -> None:
         self._panel = panel
         self._ledger = ledger
@@ -69,6 +73,8 @@ class Orchestrator:
         self._executor_model = executor_model
         self._verdict_model = verdict_model
         self._verbose = verbose
+        self._feedback_log = feedback_log
+        self._tracker = tracker
 
     def run(self, task: str, tier: Tier | str = Tier.STANDARD) -> OrchestratorResult:
         """Run the appropriate tier and return a unified result."""
@@ -148,8 +154,16 @@ class Orchestrator:
 
     def _run_standard(self, task: str) -> OrchestratorResult:
         """Standard tier: thinker-executor loop with optional ledger."""
-        calibration = ""
-        if self._ledger:
+        from epistemic_agents.rag import build_rag_context
+
+        calibration = build_rag_context(
+            task=task,
+            ledger=self._ledger,
+            feedback_log=self._feedback_log,
+            tracker=self._tracker,
+        )
+        # Fall back to plain calibration if RAG returned nothing
+        if not calibration and self._ledger:
             calibration = self._ledger.calibration_context()
 
         thinker = Thinker(
@@ -188,6 +202,7 @@ class Orchestrator:
         """Deep tier: full panel debate + synthesis + refutation, then thinker loop."""
         import sys
         from epistemic_agents.panel import ModelPanel
+        from epistemic_agents.rag import build_rag_context
 
         if not self._panel:
             # Fall back to standard if no panel configured
@@ -196,6 +211,21 @@ class Orchestrator:
         def _log(msg: str) -> None:
             if self._verbose:
                 print(msg, file=sys.stderr)
+
+        # Build RAG context for the panel's initial round
+        rag_context = build_rag_context(
+            task=task,
+            ledger=self._ledger,
+            feedback_log=self._feedback_log,
+            tracker=self._tracker,
+        )
+        initial_prompt = None
+        if rag_context:
+            from epistemic_agents.panel import PANEL_SYSTEM_PROMPT
+            initial_prompt = (
+                f"{PANEL_SYSTEM_PROMPT}\n\n"
+                f"--- CONTEXT FROM PAST SESSIONS ---\n{rag_context}"
+            )
 
         # Phase 1: Panel debate
         _log("[deep] Phase 1: Multi-round panel debate...")
@@ -206,7 +236,10 @@ class Orchestrator:
             names = [p.provider_name for p in positions]
             _log(f"[deep]   {label} — {len(positions)} responses: {', '.join(names)}")
 
-        rounds = self._panel.debate(task=task, rounds=3, on_round=_on_round)
+        rounds = self._panel.debate(
+            task=task, rounds=3, on_round=_on_round,
+            initial_system_prompt=initial_prompt,
+        )
         if not any(rounds):
             return self._run_standard(task)
         total_responses = sum(len(r) for r in rounds)

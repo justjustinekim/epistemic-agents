@@ -72,6 +72,9 @@ class UsageTracker:
         "qwq-plus": (0.0, 0.0),  # Free tier (1M tokens)
         "gpt-4o-mini": (0.00015, 0.0006),
         "o3": (0.01, 0.04),
+        "sonar-pro": (0.003, 0.015),
+        "sonar": (0.001, 0.001),
+        "code-exec-sonnet": (0.003, 0.015),  # Same as sonnet (code gen cost)
     }
 
     def __init__(self, path: str | Path = ".epistemic_usage.json"):

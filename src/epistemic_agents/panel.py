@@ -83,6 +83,7 @@ class ModelPanel:
         task: str,
         rounds: int = 2,
         on_round: callable | None = None,
+        initial_system_prompt: str | None = None,
     ) -> list[list[ProviderPosition]]:
         """Multi-round debate where models respond to each other's analyses.
 
@@ -93,6 +94,8 @@ class ModelPanel:
             task: The task to analyze.
             rounds: Total rounds (including initial analysis). Minimum 2.
             on_round: Optional callback(round_num, positions) called after each round.
+            initial_system_prompt: Optional system prompt override for Round 1 only.
+                Useful for injecting RAG context into the initial analysis.
 
         Returns:
             List of position lists, one per round.
@@ -101,7 +104,7 @@ class ModelPanel:
         all_rounds: list[list[ProviderPosition]] = []
 
         # Round 1: Independent analysis
-        positions = self.run(task)
+        positions = self.run(task, system_prompt=initial_system_prompt)
         all_rounds.append(positions)
         if on_round:
             on_round(1, positions)

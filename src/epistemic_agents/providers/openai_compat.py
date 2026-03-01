@@ -69,6 +69,16 @@ class OpenAICompatProvider(BaseProvider):
             name="gpt",
         )
 
+    @classmethod
+    def perplexity(cls, api_key: str) -> OpenAICompatProvider:
+        """Create a Perplexity provider via Sonar API (grounded in real-time web search)."""
+        return cls(
+            api_key=api_key,
+            base_url="https://api.perplexity.ai",
+            model_id="sonar-pro",
+            name="perplexity",
+        )
+
     def analyze(self, task: str, system_prompt: str) -> str:
         url = f"{self._base_url}/chat/completions"
 

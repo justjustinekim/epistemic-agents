@@ -66,6 +66,13 @@ def test_gpt_factory():
     assert p.available is True
 
 
+def test_perplexity_factory():
+    p = OpenAICompatProvider.perplexity(api_key="test-key")
+    assert p.name == "perplexity"
+    assert p.model_id == "sonar-pro"
+    assert p.available is True
+
+
 def test_openai_compat_unavailable_without_key():
     p = OpenAICompatProvider(api_key="", base_url="https://example.com", model_id="x", name="test")
     assert p.available is False
@@ -102,6 +109,7 @@ def test_config_all_providers():
         "DEEPSEEK_API_KEY": "ds-key",
         "DASHSCOPE_API_KEY": "dash-key",
         "OPENAI_API_KEY": "oai-key",
+        "PERPLEXITY_API_KEY": "pplx-key",
     }
     with patch.dict(os.environ, env, clear=True):
         providers = get_available_providers()
@@ -112,7 +120,8 @@ def test_config_all_providers():
         assert "deepseek" in names
         assert "qwq" in names
         assert "gpt" in names
-        assert len(providers) == 6
+        assert "perplexity" in names
+        assert len(providers) == 7
 
 
 def test_config_partial_providers():
