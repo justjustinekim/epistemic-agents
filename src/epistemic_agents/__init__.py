@@ -1,7 +1,9 @@
 from epistemic_agents.schema import (
     Belief,
+    BeliefGrounding,
     ChallengedBelief,
     ConfidenceLevel,
+    CONFIDENCE_LEVEL_TO_SCORE,
     DecisionBoundary,
     Escalation,
     EscalationSeverity,
@@ -18,6 +20,8 @@ from epistemic_agents.schema import (
     BlindSpot,
     UniqueInsight,
     PanelSynthesis,
+    score_to_confidence_level,
+    VerificationMethod,
     Verdict,
 )
 from epistemic_agents.thinker import Thinker
@@ -33,7 +37,7 @@ from epistemic_agents.providers import (
     CodeExecutorProvider,
 )
 from epistemic_agents.ledger import BeliefLedger, BeliefOutcome, BeliefRecord
-from epistemic_agents.bis import importance_scores, rank_beliefs, cascade_falsify
+from epistemic_agents.bis import importance_scores, rank_beliefs, cascade_falsify, detect_cycles
 from epistemic_agents.config import get_available_providers
 from epistemic_agents.panel import ModelPanel
 from epistemic_agents.synthesizer import Synthesizer
@@ -42,11 +46,31 @@ from epistemic_agents.tracker import UsageTracker, ProviderUsage, ProviderContri
 from epistemic_agents.feedback import SessionFeedback, FeedbackLog, collect_feedback
 from epistemic_agents.rag import build_rag_context
 
+# New modules
+from epistemic_agents.confidence import aggregate_confidence, aggregate_beliefs_confidence
+from epistemic_agents.belief_extractor import extract_beliefs, ExtractedBeliefs
+from epistemic_agents.agreement_detector import detect_agreements, detect_tensions
+from epistemic_agents.position_tracker import StanceShift, track_positions, format_position_summary
+from epistemic_agents.context_manager import estimate_tokens, manage_context
+from epistemic_agents.prediction_market import PredictionMarket, Prediction, Resolution, ProviderTrackRecord
+from epistemic_agents.adversarial_graph import AttackGraph, AttackNode, build_attack_graph
+from epistemic_agents.tournament import TournamentResult, TournamentLog, run_tournament
+from epistemic_agents.knowledge_base import KnowledgeBase, KnowledgeEntry
+from epistemic_agents.calibration_games import (
+    CalibrationTask,
+    CalibrationGameResult,
+    CALIBRATION_TASKS,
+    run_calibration_game,
+)
+from epistemic_agents.ledger import classify_domain
+
 __all__ = [
     # Core epistemic protocol
     "Belief",
+    "BeliefGrounding",
     "ChallengedBelief",
     "ConfidenceLevel",
+    "CONFIDENCE_LEVEL_TO_SCORE",
     "DecisionBoundary",
     "StrategicHandoff",
     "Escalation",
@@ -57,6 +81,8 @@ __all__ = [
     "ThinkerAmendment",
     "ConversationEntry",
     "ConversationLog",
+    "score_to_confidence_level",
+    "VerificationMethod",
     "Verdict",
     # Agents
     "Thinker",
@@ -66,10 +92,12 @@ __all__ = [
     "BeliefLedger",
     "BeliefOutcome",
     "BeliefRecord",
+    "classify_domain",
     # BIS
     "importance_scores",
     "rank_beliefs",
     "cascade_falsify",
+    "detect_cycles",
     # Multi-model panel
     "ProviderPosition",
     "AgreementPoint",
@@ -103,4 +131,41 @@ __all__ = [
     "collect_feedback",
     # RAG
     "build_rag_context",
+    # Confidence
+    "aggregate_confidence",
+    "aggregate_beliefs_confidence",
+    # Belief extraction
+    "extract_beliefs",
+    "ExtractedBeliefs",
+    # Agreement detection
+    "detect_agreements",
+    "detect_tensions",
+    # Position tracking
+    "StanceShift",
+    "track_positions",
+    "format_position_summary",
+    # Context management
+    "estimate_tokens",
+    "manage_context",
+    # Prediction market
+    "PredictionMarket",
+    "Prediction",
+    "Resolution",
+    "ProviderTrackRecord",
+    # Adversarial graph
+    "AttackGraph",
+    "AttackNode",
+    "build_attack_graph",
+    # Tournament
+    "TournamentResult",
+    "TournamentLog",
+    "run_tournament",
+    # Knowledge base
+    "KnowledgeBase",
+    "KnowledgeEntry",
+    # Calibration games
+    "CalibrationTask",
+    "CalibrationGameResult",
+    "CALIBRATION_TASKS",
+    "run_calibration_game",
 ]

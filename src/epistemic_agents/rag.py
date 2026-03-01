@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from epistemic_agents.feedback import FeedbackLog, SessionFeedback
+    from epistemic_agents.knowledge_base import KnowledgeBase
     from epistemic_agents.ledger import BeliefLedger, BeliefRecord
     from epistemic_agents.tracker import UsageTracker
 
@@ -78,6 +79,7 @@ def build_rag_context(
     ledger: BeliefLedger | None = None,
     feedback_log: FeedbackLog | None = None,
     tracker: UsageTracker | None = None,
+    knowledge_base: KnowledgeBase | None = None,
     max_length: int = 3000,
 ) -> str:
     """Build retrieval-augmented context from past sessions.
@@ -88,12 +90,14 @@ def build_rag_context(
     3. Calibration data (from ledger)
     4. Feedback patterns — which tiers/approaches worked
     5. Provider track records — who contributes unique insights
+    6. Knowledge base — confirmed beliefs from previous sessions
 
     Args:
         task: The current task being analysed.
         ledger: Belief outcome ledger.
         feedback_log: User feedback log.
         tracker: Usage and contribution tracker.
+        knowledge_base: Persistent knowledge base of confirmed beliefs.
         max_length: Approximate max character length for the context block.
 
     Returns:
@@ -194,6 +198,12 @@ def build_rag_context(
                     f"{tensions} tensions contributed"
                 )
             sections.append("\n".join(lines))
+
+    # --- 6. Knowledge base ---
+    if knowledge_base:
+        kb_context = knowledge_base.build_context(task)
+        if kb_context:
+            sections.append(kb_context)
 
     if not sections:
         return ""

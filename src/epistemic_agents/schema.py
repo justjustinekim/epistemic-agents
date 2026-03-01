@@ -18,6 +18,51 @@ class ConfidenceLevel(str, Enum):
     SPECULATIVE = "speculative"  # Best guess, treat with caution
 
 
+class BeliefGrounding(str, Enum):
+    """How a belief was established — its evidential basis."""
+
+    EMPIRICAL = "empirical"  # Verified by execution or observation
+    MODEL_CONSENSUS = "model_consensus"  # Multiple models independently agree
+    SINGLE_MODEL = "single_model"  # One model's analysis
+    ASSUMED = "assumed"  # Background assumption, not verified
+
+
+class VerificationMethod(str, Enum):
+    """How a belief was verified after initial formation."""
+
+    EXECUTOR_CHALLENGE = "executor_challenge"  # Executor tested and confirmed
+    CODE_EXECUTION = "code_execution"  # Code ran and produced expected result
+    MODEL_CONSENSUS = "model_consensus"  # Multiple models independently confirmed
+    UNVERIFIED = "unverified"  # Not yet verified
+
+
+# ---------------------------------------------------------------------------
+# Confidence score mappings (qualitative <-> quantitative)
+# ---------------------------------------------------------------------------
+
+CONFIDENCE_LEVEL_TO_SCORE: dict[ConfidenceLevel, float] = {
+    ConfidenceLevel.HIGH: 0.9,
+    ConfidenceLevel.MODERATE: 0.7,
+    ConfidenceLevel.LOW: 0.4,
+    ConfidenceLevel.SPECULATIVE: 0.2,
+}
+
+SCORE_TO_CONFIDENCE_LEVEL: list[tuple[float, ConfidenceLevel]] = [
+    (0.85, ConfidenceLevel.HIGH),
+    (0.55, ConfidenceLevel.MODERATE),
+    (0.3, ConfidenceLevel.LOW),
+    (0.0, ConfidenceLevel.SPECULATIVE),
+]
+
+
+def score_to_confidence_level(score: float) -> ConfidenceLevel:
+    """Convert a numeric confidence score (0.0-1.0) to a qualitative level."""
+    for threshold, level in SCORE_TO_CONFIDENCE_LEVEL:
+        if score >= threshold:
+            return level
+    return ConfidenceLevel.SPECULATIVE
+
+
 class Belief(BaseModel):
     """A structured epistemic claim with justification and falsification conditions."""
 
@@ -39,6 +84,21 @@ class Belief(BaseModel):
         description="IDs of beliefs this one depends on — if upstream beliefs are "
         "challenged, this belief should be reviewed too",
     )
+    grounding: BeliefGrounding = Field(
+        default=BeliefGrounding.ASSUMED,
+        description="How this belief was established",
+    )
+    confidence_score: float | None = Field(
+        default=None,
+        description="Numeric confidence 0.0-1.0, optional alongside qualitative level",
+    )
+
+    @property
+    def effective_score(self) -> float:
+        """Return confidence_score if set, else map from qualitative level."""
+        if self.confidence_score is not None:
+            return self.confidence_score
+        return CONFIDENCE_LEVEL_TO_SCORE.get(self.confidence, 0.5)
 
 
 class DecisionBoundary(BaseModel):
@@ -252,6 +312,14 @@ class AgreementPoint(BaseModel):
     combined_confidence: ConfidenceLevel = Field(
         description="Synthesized confidence level across providers"
     )
+    source_refs: list[str] = Field(
+        default_factory=list,
+        description="Traceability refs, e.g. 'provider:belief_id'",
+    )
+    combined_confidence_score: float | None = Field(
+        default=None,
+        description="Numeric combined confidence via log-odds averaging",
+    )
 
 
 class TensionPoint(BaseModel):
@@ -264,6 +332,10 @@ class TensionPoint(BaseModel):
     synthesis_notes: str = Field(
         description="The synthesizer's assessment of this tension"
     )
+    source_refs: list[str] = Field(
+        default_factory=list,
+        description="Traceability refs, e.g. 'provider:belief_id'",
+    )
 
 
 class BlindSpot(BaseModel):
@@ -272,6 +344,10 @@ class BlindSpot(BaseModel):
     observation: str = Field(description="The insight or observation that was missed")
     identified_by: str = Field(description="Provider that caught this")
     missed_by: list[str] = Field(description="Providers that missed this")
+    source_refs: list[str] = Field(
+        default_factory=list,
+        description="Traceability refs, e.g. 'provider:belief_id'",
+    )
 
 
 class UniqueInsight(BaseModel):
@@ -280,6 +356,10 @@ class UniqueInsight(BaseModel):
     insight: str = Field(description="The unique insight or framing")
     source_provider: str = Field(description="Provider that contributed this")
     relevance: str = Field(description="Why this insight matters for the task")
+    source_refs: list[str] = Field(
+        default_factory=list,
+        description="Traceability refs, e.g. 'provider:belief_id'",
+    )
 
 
 class PanelSynthesis(BaseModel):

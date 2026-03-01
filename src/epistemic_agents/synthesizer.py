@@ -26,6 +26,9 @@ Instructions:
    The debate should have sharpened where the real cruxes are.
 6. **Meta-Confidence** — How confident are you in the synthesis? Where is it weakest? \
    Did the debate resolve key uncertainties or expose new ones?
+7. **Source Traceability** — When citing agreements, tensions, or insights, include \
+   source_refs in the format "provider:belief_id" so claims can be traced back \
+   to their origin.
 
 Be honest about uncertainty. If models disagree on something important, don't paper \
 over it — surface the tension and explain your reasoning for the position you take."""
@@ -44,6 +47,7 @@ Review the refutations carefully and produce a REVISED synthesis:
   that seriously — it's likely a real problem.
 - If refutations are weak or just restating original positions without new arguments, \
   hold your ground and explain why.
+- Include source_refs (provider:belief_id) for traceability on all claims.
 
 This is the FINAL output. Make it count. The goal is the most accurate, fair, and \
 useful synthesis possible — not to please the panel models."""
@@ -99,8 +103,19 @@ class Synthesizer:
             "initial analysis?"
         )
 
-        # Flatten all positions for the synthesis result
-        all_positions = [pos for round_positions in rounds for pos in round_positions]
+        # Add position shift context if beliefs are available
+        try:
+            from epistemic_agents.position_tracker import (
+                format_position_summary,
+                track_positions,
+            )
+            shifts = track_positions(rounds)
+            shift_text = format_position_summary(shifts)
+            if shift_text:
+                sections.append(f"\n{shift_text}")
+        except Exception:
+            pass
+
         # Use only the final round's positions as the canonical provider_positions
         final_positions = rounds[-1] if rounds else []
 
@@ -166,6 +181,38 @@ class Synthesizer:
         positions: list[ProviderPosition],
         system: str = SYNTHESIS_SYSTEM_PROMPT,
     ) -> PanelSynthesis:
+        # Inject programmatic agreement/tension detection if beliefs are populated
+        has_beliefs = any(pos.beliefs for pos in positions)
+        if has_beliefs:
+            try:
+                from epistemic_agents.agreement_detector import (
+                    detect_agreements,
+                    detect_tensions,
+                )
+                agreements = detect_agreements(positions)
+                tensions = detect_tensions(positions)
+                if agreements or tensions:
+                    extra = "\n\n--- PROGRAMMATIC ANALYSIS ---\n"
+                    if agreements:
+                        extra += "Detected agreements (by belief similarity):\n"
+                        for ag in agreements:
+                            extra += (
+                                f"  - {ag.claim} "
+                                f"(providers: {', '.join(ag.supporting_providers)}, "
+                                f"confidence: {ag.combined_confidence_score:.2f})\n"
+                            )
+                    if tensions:
+                        extra += "Detected tensions (high similarity, divergent confidence):\n"
+                        for t in tensions:
+                            extra += f"  - {t.claim}: {t.synthesis_notes}\n"
+                    extra += (
+                        "Use this programmatic analysis as a starting point, "
+                        "but apply your own judgment.\n"
+                    )
+                    user_message += extra
+            except Exception:
+                pass  # Graceful degradation
+
         synthesis = client.structured_request(
             model=self.model,
             system=system,

@@ -5,7 +5,9 @@ import json
 from epistemic_agents.schema import (
     AmendmentType,
     Belief,
+    BeliefGrounding,
     ChallengedBelief,
+    CONFIDENCE_LEVEL_TO_SCORE,
     ConfidenceLevel,
     ConversationLog,
     DecisionBoundary,
@@ -13,8 +15,10 @@ from epistemic_agents.schema import (
     EscalationSeverity,
     EscalationType,
     ExecutorFeedback,
+    score_to_confidence_level,
     StrategicHandoff,
     ThinkerAmendment,
+    VerificationMethod,
     Verdict,
 )
 
@@ -343,3 +347,110 @@ def test_schema_json_generation():
     assert "escalation_type" in feedback_schema["properties"]
     assert "escalations" in feedback_schema["properties"]
     assert "proposed_adjustments" in feedback_schema["properties"]
+
+
+# ---------------------------------------------------------------------------
+# WP1: New schema tests
+# ---------------------------------------------------------------------------
+
+
+def test_belief_grounding_defaults():
+    b = Belief(
+        id="b1",
+        claim="Test",
+        confidence=ConfidenceLevel.HIGH,
+        justification="Test",
+    )
+    assert b.grounding == BeliefGrounding.ASSUMED
+    assert b.confidence_score is None
+
+
+def test_belief_grounding_explicit():
+    b = Belief(
+        id="b1",
+        claim="Test",
+        confidence=ConfidenceLevel.HIGH,
+        justification="Test",
+        grounding=BeliefGrounding.EMPIRICAL,
+        confidence_score=0.95,
+    )
+    assert b.grounding == BeliefGrounding.EMPIRICAL
+    assert b.confidence_score == 0.95
+
+
+def test_belief_effective_score_from_qualitative():
+    for level, expected in CONFIDENCE_LEVEL_TO_SCORE.items():
+        b = Belief(id="t", claim="t", confidence=level, justification="t")
+        assert b.effective_score == expected
+
+
+def test_belief_effective_score_numeric_override():
+    b = Belief(
+        id="t",
+        claim="t",
+        confidence=ConfidenceLevel.LOW,
+        justification="t",
+        confidence_score=0.85,
+    )
+    assert b.effective_score == 0.85
+
+
+def test_score_to_confidence_level_mapping():
+    assert score_to_confidence_level(0.95) == ConfidenceLevel.HIGH
+    assert score_to_confidence_level(0.85) == ConfidenceLevel.HIGH
+    assert score_to_confidence_level(0.7) == ConfidenceLevel.MODERATE
+    assert score_to_confidence_level(0.55) == ConfidenceLevel.MODERATE
+    assert score_to_confidence_level(0.4) == ConfidenceLevel.LOW
+    assert score_to_confidence_level(0.3) == ConfidenceLevel.LOW
+    assert score_to_confidence_level(0.1) == ConfidenceLevel.SPECULATIVE
+    assert score_to_confidence_level(0.0) == ConfidenceLevel.SPECULATIVE
+
+
+def test_verification_method_enum():
+    assert VerificationMethod.EXECUTOR_CHALLENGE.value == "executor_challenge"
+    assert VerificationMethod.UNVERIFIED.value == "unverified"
+
+
+def test_agreement_point_source_refs_default():
+    from epistemic_agents.schema import AgreementPoint
+
+    ap = AgreementPoint(
+        claim="Test",
+        supporting_providers=["claude"],
+        combined_confidence=ConfidenceLevel.HIGH,
+    )
+    assert ap.source_refs == []
+    assert ap.combined_confidence_score is None
+
+
+def test_tension_point_source_refs_default():
+    from epistemic_agents.schema import TensionPoint
+
+    tp = TensionPoint(
+        claim="Test",
+        positions={"claude": "yes", "gemini": "no"},
+        synthesis_notes="Disagree",
+    )
+    assert tp.source_refs == []
+
+
+def test_blind_spot_source_refs_default():
+    from epistemic_agents.schema import BlindSpot
+
+    bs = BlindSpot(
+        observation="Test",
+        identified_by="claude",
+        missed_by=["gemini"],
+    )
+    assert bs.source_refs == []
+
+
+def test_unique_insight_source_refs_default():
+    from epistemic_agents.schema import UniqueInsight
+
+    ui = UniqueInsight(
+        insight="Test",
+        source_provider="claude",
+        relevance="Important",
+    )
+    assert ui.source_refs == []

@@ -68,10 +68,17 @@ Be direct and adversarial. The point of this round is accountability."""
 class ModelPanel:
     """Run multiple models in parallel on the same task, with optional debate."""
 
-    def __init__(self, providers: list[BaseProvider]) -> None:
+    def __init__(
+        self,
+        providers: list[BaseProvider],
+        extract_beliefs: bool = True,
+        extraction_model: str = "haiku",
+    ) -> None:
         self.providers = [p for p in providers if p.available]
         if not self.providers:
             raise ValueError("No available providers configured")
+        self._extract_beliefs = extract_beliefs
+        self._extraction_model = extraction_model
 
     def run(self, task: str, system_prompt: str | None = None) -> list[ProviderPosition]:
         """Query all providers in parallel and return their positions."""
@@ -111,8 +118,17 @@ class ModelPanel:
 
         # Subsequent rounds: models respond to each other
         for round_num in range(2, rounds + 1):
-            debate_prompt = self._build_debate_context(task, all_rounds)
-            positions = self._parallel_query(debate_prompt, DEBATE_SYSTEM_PROMPT)
+            # Use targeted prompting if beliefs are populated
+            has_beliefs = any(
+                pos.beliefs
+                for round_positions in all_rounds
+                for pos in round_positions
+            )
+            if has_beliefs:
+                positions = self._targeted_parallel_query(task, all_rounds)
+            else:
+                debate_prompt = self._build_debate_context(task, all_rounds)
+                positions = self._parallel_query(debate_prompt, DEBATE_SYSTEM_PROMPT)
             all_rounds.append(positions)
             if on_round:
                 on_round(round_num, positions)
@@ -186,7 +202,14 @@ class ModelPanel:
 
         with ThreadPoolExecutor(max_workers=len(self.providers)) as pool:
             futures = {
-                pool.submit(self._query_provider, provider, task, system_prompt): provider
+                pool.submit(
+                    self._query_provider,
+                    provider,
+                    task,
+                    system_prompt,
+                    self._extract_beliefs,
+                    self._extraction_model,
+                ): provider
                 for provider in self.providers
             }
 
@@ -202,6 +225,98 @@ class ModelPanel:
                     )
 
         return positions
+
+    def _targeted_parallel_query(
+        self,
+        task: str,
+        all_rounds: list[list[ProviderPosition]],
+    ) -> list[ProviderPosition]:
+        """Query each provider with a targeted prompt specific to them."""
+        positions: list[ProviderPosition] = []
+
+        with ThreadPoolExecutor(max_workers=len(self.providers)) as pool:
+            futures = {}
+            for provider in self.providers:
+                targeted_prompt = self._build_targeted_debate_context(
+                    task, all_rounds, provider.name
+                )
+                futures[pool.submit(
+                    self._query_provider,
+                    provider,
+                    targeted_prompt,
+                    DEBATE_SYSTEM_PROMPT,
+                    self._extract_beliefs,
+                    self._extraction_model,
+                )] = provider
+
+            for future in as_completed(futures):
+                provider = futures[future]
+                try:
+                    position = future.result()
+                    positions.append(position)
+                except Exception as exc:
+                    print(
+                        f"[panel] {provider.name} ({provider.model_id}) failed: {exc}",
+                        file=sys.stderr,
+                    )
+
+        return positions
+
+    @staticmethod
+    def _build_targeted_debate_context(
+        task: str,
+        all_rounds: list[list[ProviderPosition]],
+        target_provider: str,
+    ) -> str:
+        """Build debate context targeted for a specific provider.
+
+        Includes:
+        - The target's own previous position
+        - Counterarguments from other models (via belief similarity)
+        - Summaries of other positions (truncated)
+        - Directive to address counterarguments
+        """
+        from epistemic_agents.rag import _tokenize, _jaccard_similarity
+
+        sections = [f"# Original Task\n{task}\n"]
+
+        # Find target's latest position
+        target_pos = None
+        for round_positions in reversed(all_rounds):
+            for pos in round_positions:
+                if pos.provider_name == target_provider:
+                    target_pos = pos
+                    break
+            if target_pos:
+                break
+
+        if target_pos:
+            sections.append(
+                f"---\n# YOUR PREVIOUS POSITION ({target_provider}):\n"
+                f"{target_pos.raw_analysis[:2000]}\n"
+            )
+
+        # Find counterarguments from other models
+        other_positions = []
+        for round_positions in all_rounds:
+            for pos in round_positions:
+                if pos.provider_name != target_provider:
+                    other_positions.append(pos)
+
+        sections.append("---\n# OTHER MODELS' POSITIONS:\n")
+        for pos in other_positions:
+            sections.append(
+                f"## {pos.provider_name} ({pos.model_id}):\n"
+                f"{pos.raw_analysis[:500]}...\n"
+            )
+
+        sections.append(
+            "---\n"
+            "Address the counterarguments above. Where do you disagree? "
+            "Where have other models changed your mind? "
+            "What's the crux of remaining disagreements?"
+        )
+        return "\n".join(sections)
 
     @staticmethod
     def _build_debate_context(
@@ -232,11 +347,25 @@ class ModelPanel:
         provider: BaseProvider,
         task: str,
         system_prompt: str,
+        extract_beliefs: bool = False,
+        extraction_model: str = "haiku",
     ) -> ProviderPosition:
         raw = provider.analyze(task, system_prompt)
+        beliefs: list = []
+
+        if extract_beliefs:
+            try:
+                from epistemic_agents.belief_extractor import extract_beliefs as _extract
+                beliefs = _extract(raw, provider.name, model=extraction_model)
+            except Exception as exc:
+                print(
+                    f"[panel] Belief extraction failed for {provider.name}: {exc}",
+                    file=sys.stderr,
+                )
+
         return ProviderPosition(
             provider_name=provider.name,
             model_id=provider.model_id,
-            beliefs=[],
+            beliefs=beliefs,
             raw_analysis=raw,
         )

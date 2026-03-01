@@ -1,6 +1,6 @@
 """Tests for Belief Importance Scoring and cascade falsification."""
 
-from epistemic_agents.bis import cascade_falsify, importance_scores, rank_beliefs
+from epistemic_agents.bis import cascade_falsify, detect_cycles, importance_scores, rank_beliefs
 from epistemic_agents.schema import Belief, ConfidenceLevel
 
 
@@ -12,6 +12,7 @@ def _make_beliefs() -> list[Belief]:
             claim="Foundation belief",
             confidence=ConfidenceLevel.HIGH,
             justification="Root",
+            falsification_conditions=["If X fails"],
         ),
         Belief(
             id="b2",
@@ -40,7 +41,7 @@ def _make_beliefs() -> list[Belief]:
 def test_importance_scores_root_highest():
     beliefs = _make_beliefs()
     scores = importance_scores(beliefs)
-    # b1 has 3 transitive dependents (b2, b3, b4) and HIGH confidence boost
+    # b1 has 3 transitive dependents and HIGH confidence
     assert scores["b1"] > scores["b2"]
     assert scores["b1"] > scores["b3"]
     assert scores["b1"] > scores["b4"]
@@ -53,11 +54,12 @@ def test_importance_scores_chain():
     assert scores["b2"] > scores["b3"]
 
 
-def test_importance_scores_leaf_is_one():
+def test_importance_scores_leaf_baseline():
     beliefs = _make_beliefs()
     scores = importance_scores(beliefs)
-    # b3 has no dependents, so base score is 1.0
-    assert scores["b3"] == 1.0
+    # b3 has no dependents, LOW confidence (0.4 + 0.5 = 0.9), no falsification
+    # score = 1.0 * 0.9 * 1.0 = 0.9
+    assert scores["b3"] == 1.0 * (0.4 + 0.5) * 1.0
 
 
 def test_rank_beliefs_order():
@@ -65,9 +67,6 @@ def test_rank_beliefs_order():
     ranked = rank_beliefs(beliefs)
     # b1 should be first (highest importance)
     assert ranked[0][0].id == "b1"
-    # b3 and b4 are both leaf nodes with score 1.0, so either can be last
-    leaf_ids = {ranked[-1][0].id, ranked[-2][0].id}
-    assert leaf_ids == {"b3", "b4"}
 
 
 def test_cascade_falsify_root():
@@ -103,9 +102,119 @@ def test_no_dependencies():
         Belief(id="b2", claim="B", confidence=ConfidenceLevel.LOW, justification="Y"),
     ]
     scores = importance_scores(beliefs)
-    # b1 has HIGH boost: 1.0 * 1.5 = 1.5
-    assert scores["b1"] == 1.5
-    assert scores["b2"] == 1.0
+    # b1 HIGH: 1.0 * (0.9+0.5) * 1.0 = 1.4
+    assert scores["b1"] == 1.0 * 1.4 * 1.0
+    # b2 LOW: 1.0 * (0.4+0.5) * 1.0 = 0.9
+    assert scores["b2"] == 1.0 * 0.9 * 1.0
 
     affected = cascade_falsify(beliefs, "b1")
     assert affected == []
+
+
+# ---------------------------------------------------------------------------
+# WP2: Cycle detection tests
+# ---------------------------------------------------------------------------
+
+
+def test_detect_cycles_no_cycles():
+    beliefs = _make_beliefs()
+    cycles = detect_cycles(beliefs)
+    assert cycles == []
+
+
+def test_detect_cycles_simple_cycle():
+    beliefs = [
+        Belief(id="a", claim="A", confidence=ConfidenceLevel.HIGH, justification="X", depends_on=["b"]),
+        Belief(id="b", claim="B", confidence=ConfidenceLevel.HIGH, justification="Y", depends_on=["a"]),
+    ]
+    cycles = detect_cycles(beliefs)
+    assert len(cycles) >= 1
+    # The cycle should contain both a and b
+    all_nodes = set()
+    for c in cycles:
+        all_nodes.update(c)
+    assert "a" in all_nodes
+    assert "b" in all_nodes
+
+
+def test_detect_cycles_self_reference():
+    beliefs = [
+        Belief(id="a", claim="A", confidence=ConfidenceLevel.HIGH, justification="X", depends_on=["a"]),
+    ]
+    cycles = detect_cycles(beliefs)
+    assert len(cycles) >= 1
+
+
+def test_importance_scores_with_cycle_no_infinite_loop():
+    """BIS should handle cycles without infinite recursion."""
+    beliefs = [
+        Belief(id="a", claim="A", confidence=ConfidenceLevel.HIGH, justification="X", depends_on=["b"]),
+        Belief(id="b", claim="B", confidence=ConfidenceLevel.HIGH, justification="Y", depends_on=["a"]),
+        Belief(id="c", claim="C", confidence=ConfidenceLevel.LOW, justification="Z", depends_on=["a"]),
+    ]
+    # Should not hang or raise
+    scores = importance_scores(beliefs)
+    assert "a" in scores
+    assert "b" in scores
+    assert "c" in scores
+
+
+# ---------------------------------------------------------------------------
+# WP2: Weighted scoring & testability boost tests
+# ---------------------------------------------------------------------------
+
+
+def test_testability_boost():
+    b_no_fc = Belief(id="a", claim="A", confidence=ConfidenceLevel.HIGH, justification="X")
+    b_many_fc = Belief(
+        id="b",
+        claim="B",
+        confidence=ConfidenceLevel.HIGH,
+        justification="Y",
+        falsification_conditions=["c1", "c2", "c3"],
+    )
+    scores_no = importance_scores([b_no_fc])
+    scores_many = importance_scores([b_many_fc])
+    # b with 3 falsification conditions should score higher than b without
+    assert scores_many["b"] > scores_no["a"]
+
+
+def test_testability_boost_capped_at_5():
+    b_5 = Belief(
+        id="a",
+        claim="A",
+        confidence=ConfidenceLevel.HIGH,
+        justification="X",
+        falsification_conditions=["c1", "c2", "c3", "c4", "c5"],
+    )
+    b_10 = Belief(
+        id="b",
+        claim="B",
+        confidence=ConfidenceLevel.HIGH,
+        justification="Y",
+        falsification_conditions=["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"],
+    )
+    scores_5 = importance_scores([b_5])
+    scores_10 = importance_scores([b_10])
+    # Capped at 5, so scores should be equal
+    assert scores_5["a"] == scores_10["b"]
+
+
+def test_weighted_scoring_with_numeric_confidence():
+    b_parent = Belief(
+        id="parent",
+        claim="Parent",
+        confidence=ConfidenceLevel.HIGH,
+        justification="X",
+    )
+    b_child_high = Belief(
+        id="child",
+        claim="Child",
+        confidence=ConfidenceLevel.HIGH,
+        justification="Y",
+        depends_on=["parent"],
+        confidence_score=0.95,
+    )
+    scores = importance_scores([b_parent, b_child_high])
+    # Parent gets weighted by child's effective score (0.95)
+    assert scores["parent"] > scores["child"]

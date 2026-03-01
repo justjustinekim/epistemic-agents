@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -15,6 +16,7 @@ from epistemic_agents.schema import (
     ConversationLog,
     ExecutorFeedback,
     StrategicHandoff,
+    VerificationMethod,
 )
 
 
@@ -43,20 +45,28 @@ class BeliefRecord(BaseModel):
         description="Brief description of the task this belief was part of",
     )
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    verified_by: VerificationMethod = Field(
+        default=VerificationMethod.UNVERIFIED,
+        description="How this belief was verified",
+    )
+    domain: str = Field(
+        default="",
+        description="Domain classification for this belief's task",
+    )
 
 
 class CalibrationStats(BaseModel):
     """Aggregated accuracy stats by confidence level."""
 
     level: ConfidenceLevel
-    total: int = 0
-    confirmed: int = 0
-    falsified: int = 0
-    revised: int = 0
-    untested: int = 0
+    total: float = 0.0
+    confirmed: float = 0.0
+    falsified: float = 0.0
+    revised: float = 0.0
+    untested: float = 0.0
 
     @property
-    def tested(self) -> int:
+    def tested(self) -> float:
         return self.confirmed + self.falsified + self.revised
 
     @property
@@ -65,6 +75,34 @@ class CalibrationStats(BaseModel):
         if self.tested == 0:
             return None
         return self.confirmed / self.tested
+
+
+# ---------------------------------------------------------------------------
+# Domain classification
+# ---------------------------------------------------------------------------
+
+_DOMAIN_KEYWORDS: dict[str, list[str]] = {
+    "infrastructure": ["docker", "kubernetes", "k8s", "deploy", "ci/cd", "pipeline", "terraform", "aws", "gcp", "azure", "server", "nginx"],
+    "database": ["sql", "database", "postgres", "mysql", "mongodb", "redis", "query", "migration", "schema", "index"],
+    "api": ["api", "endpoint", "rest", "graphql", "grpc", "webhook", "http", "request", "response"],
+    "frontend": ["react", "vue", "angular", "css", "html", "javascript", "typescript", "component", "ui", "ux", "browser"],
+    "ml": ["model", "training", "inference", "neural", "machine learning", "ml", "ai", "dataset", "embedding", "transformer"],
+    "architecture": ["architecture", "microservice", "monolith", "design pattern", "scalab", "distributed", "event-driven"],
+    "security": ["security", "auth", "token", "encrypt", "vulnerab", "xss", "csrf", "injection", "permission", "access control"],
+}
+
+
+def classify_domain(task: str) -> str:
+    """Keyword-based domain classification of a task."""
+    task_lower = task.lower()
+    best_domain = "general"
+    best_count = 0
+    for domain, keywords in _DOMAIN_KEYWORDS.items():
+        count = sum(1 for kw in keywords if kw in task_lower)
+        if count > best_count:
+            best_count = count
+            best_domain = domain
+    return best_domain
 
 
 class BeliefLedger:
@@ -119,6 +157,7 @@ class BeliefLedger:
 
         # Create records for each original belief
         task_summary = log.task[:100]
+        domain = classify_domain(log.task)
         new_records: list[BeliefRecord] = []
         for belief in handoff.beliefs:
             if belief.id in challenged_ids:
@@ -128,8 +167,9 @@ class BeliefLedger:
                 outcome = BeliefOutcome.REVISED
                 reason = "Revised during thinker-executor loop"
             elif log.converged:
-                outcome = BeliefOutcome.CONFIRMED
-                reason = ""
+                # Convergence alone is not positive verification
+                outcome = BeliefOutcome.UNTESTED
+                reason = "Converged without positive verification"
             else:
                 outcome = BeliefOutcome.UNTESTED
                 reason = ""
@@ -141,6 +181,7 @@ class BeliefLedger:
                 outcome=outcome,
                 failure_reason=reason,
                 task_summary=task_summary,
+                domain=domain,
             )
             new_records.append(record)
 
@@ -148,29 +189,70 @@ class BeliefLedger:
         self._save()
         return new_records
 
-    def calibration_report(self) -> list[CalibrationStats]:
-        """Compute accuracy stats grouped by confidence level."""
+    def mark_verified(
+        self,
+        belief_id: str,
+        method: VerificationMethod,
+        outcome: BeliefOutcome,
+    ) -> BeliefRecord | None:
+        """Explicitly verify a belief, upgrading from UNTESTED to a confirmed outcome.
+
+        Returns the updated record, or None if not found.
+        """
+        for record in reversed(self._records):
+            if record.belief_id == belief_id:
+                record.outcome = outcome
+                record.verified_by = method
+                if outcome == BeliefOutcome.CONFIRMED:
+                    record.failure_reason = ""
+                self._save()
+                return record
+        return None
+
+    def calibration_report(
+        self,
+        decay_half_life_days: float = 30.0,
+        domain: str | None = None,
+    ) -> list[CalibrationStats]:
+        """Compute accuracy stats grouped by confidence level.
+
+        Args:
+            decay_half_life_days: Half-life for temporal decay weighting.
+                Older records have less influence. Set to 0 to disable decay.
+            domain: If set, only include records from this domain.
+        """
+        now = datetime.now(timezone.utc)
         stats: dict[ConfidenceLevel, CalibrationStats] = {}
         for level in ConfidenceLevel:
             stats[level] = CalibrationStats(level=level)
 
         for record in self._records:
-            s = stats[record.confidence]
-            s.total += 1
-            if record.outcome == BeliefOutcome.CONFIRMED:
-                s.confirmed += 1
-            elif record.outcome == BeliefOutcome.FALSIFIED:
-                s.falsified += 1
-            elif record.outcome == BeliefOutcome.REVISED:
-                s.revised += 1
+            if domain and record.domain and record.domain != domain:
+                continue
+
+            # Compute temporal decay weight
+            if decay_half_life_days > 0:
+                age_days = (now - record.timestamp).total_seconds() / 86400.0
+                weight = math.pow(2, -age_days / decay_half_life_days)
             else:
-                s.untested += 1
+                weight = 1.0
+
+            s = stats[record.confidence]
+            s.total += weight
+            if record.outcome == BeliefOutcome.CONFIRMED:
+                s.confirmed += weight
+            elif record.outcome == BeliefOutcome.FALSIFIED:
+                s.falsified += weight
+            elif record.outcome == BeliefOutcome.REVISED:
+                s.revised += weight
+            else:
+                s.untested += weight
 
         return [s for s in stats.values() if s.total > 0]
 
-    def calibration_context(self) -> str:
+    def calibration_context(self, domain: str | None = None) -> str:
         """Generate a calibration summary for injection into the thinker's prompt."""
-        report = self.calibration_report()
+        report = self.calibration_report(domain=domain)
         if not report:
             return ""
 
@@ -179,16 +261,16 @@ class BeliefLedger:
             return ""  # Not enough data to be meaningful
 
         lines = [
-            f"CALIBRATION DATA (from {total} beliefs across previous sessions):"
+            f"CALIBRATION DATA (from {total:.0f} beliefs across previous sessions):"
         ]
         for s in report:
             if s.tested > 0:
                 acc = s.accuracy
                 acc_str = f"{acc:.0%}" if acc is not None else "N/A"
                 lines.append(
-                    f"  {s.level.value.upper()}: {s.total} beliefs, "
-                    f"{s.confirmed} confirmed, {s.falsified} falsified, "
-                    f"{s.revised} revised (accuracy: {acc_str})"
+                    f"  {s.level.value.upper()}: {s.total:.0f} beliefs, "
+                    f"{s.confirmed:.0f} confirmed, {s.falsified:.0f} falsified, "
+                    f"{s.revised:.0f} revised (accuracy: {acc_str})"
                 )
 
         # Add specific warnings for miscalibration

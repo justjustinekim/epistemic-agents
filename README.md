@@ -1,6 +1,8 @@
 # Epistemic Agents
 
-Structured epistemological communication between AI models. A multi-model panel debates and synthesizes positions, while a thinker-executor loop iteratively refines strategies through belief revision. Every claim carries explicit confidence levels, falsification conditions, and assumptions — forcing models to be epistemically honest.
+Structured epistemological communication between AI models. A multi-model panel debates and synthesizes positions, while a thinker-executor loop iteratively refines strategies through belief revision. Every claim carries explicit confidence levels, falsification conditions, assumptions, and evidence grounding — forcing models to be epistemically honest.
+
+Features include belief dependency graphs with cycle detection, numeric confidence aggregation via log-odds averaging, adversarial attack graphs, prediction markets for provider trust, cross-session knowledge bases, and calibration games with known ground truth.
 
 ## Why
 
@@ -105,13 +107,14 @@ Claims that are opinions, predictions, or strategic recommendations are classifi
 
 ### RAG from Past Sessions
 
-`build_rag_context()` injects relevant context from past sessions into new analyses using zero-dependency Jaccard similarity (no vector DB, no embeddings). Five context sections are included when data exists:
+`build_rag_context()` injects relevant context from past sessions into new analyses using zero-dependency Jaccard similarity (no vector DB, no embeddings). Six context sections are included when data exists:
 
 1. **Falsified beliefs** — Past beliefs proven wrong, so they aren't repeated.
 2. **Revised beliefs** — Past beliefs that needed correction, to scrutinize similar claims.
-3. **Calibration data** — Historical accuracy by confidence level from the `BeliefLedger`.
+3. **Calibration data** — Historical accuracy by confidence level from the `BeliefLedger`, with temporal decay weighting and per-domain filtering.
 4. **Feedback patterns** — Which tiers/approaches worked based on user feedback.
 5. **Provider track records** — Which providers contribute unique insights vs. echo consensus.
+6. **Knowledge base** — Confirmed beliefs from the persistent `KnowledgeBase`, retrieved by similarity.
 
 ## Example: What the Feedback Loop Produces
 
@@ -177,6 +180,26 @@ Run the naive comparison (same task, plain text, no feedback loop):
 python examples/naive_comparison.py
 ```
 
+Run the virtual panelists demo (4 adversarial roles):
+```bash
+python examples/virtual_panel_demo.py
+```
+
+Run the code executor demo (empirical claim validation):
+```bash
+python examples/code_executor_demo.py
+```
+
+Run the tournament demo (compare analysis tiers):
+```bash
+python examples/tournament_demo.py
+```
+
+Run the knowledge base demo (persistent beliefs):
+```bash
+python examples/knowledge_base_demo.py
+```
+
 Run all demos:
 ```bash
 python examples/run_all.py
@@ -209,25 +232,36 @@ print(result.verdict.recommendation)
 pytest tests/ -v
 ```
 
+223 tests covering schema validation, BIS cycle detection, ledger calibration, confidence aggregation, belief extraction, agreement detection, position tracking, prediction markets, adversarial graphs, tournaments, knowledge base, and full integration tests for the loop, panel, orchestrator, and synthesizer.
+
 ## Project Structure
 
 ```
 src/epistemic_agents/
-├── schema.py              # Epistemic protocol — Pydantic models for beliefs,
-│                          # handoffs, feedback, amendments, panel synthesis, verdict
+├── schema.py              # Epistemic protocol — beliefs, handoffs, synthesis, verdict
 ├── thinker.py             # Thinker agent (Claude Opus) — deep analysis + revision
 ├── executor.py            # Executor agent (Claude Sonnet) — execution + challenge
 ├── loop.py                # Feedback loop controller — orchestration + convergence
 ├── client.py              # Claude CLI wrapper (uses your Max plan, no API key needed)
 ├── orchestrator.py        # Tiered routing — quick / standard / deep
-├── panel.py               # Multi-model debate — parallel analysis + cross-model debate
-├── synthesizer.py         # Cross-model synthesis — agreements, tensions, blind spots
+├── panel.py               # Multi-model debate — belief extraction + targeted prompts
+├── synthesizer.py         # Cross-model synthesis — programmatic detection + source tracing
 ├── config.py              # Provider discovery from environment variables
 ├── rag.py                 # RAG — retrieval-augmented context from past sessions
-├── bis.py                 # Belief Importance Scoring + cascade falsification
-├── ledger.py              # Cross-session belief tracking + calibration
+├── bis.py                 # Belief Importance Scoring + cycle detection + cascade falsification
+├── ledger.py              # Cross-session belief tracking + calibration + temporal decay
 ├── tracker.py             # Cost + contribution tracking per provider
 ├── feedback.py            # Post-session user feedback collection
+├── confidence.py          # Numeric confidence aggregation via log-odds averaging
+├── belief_extractor.py    # Structured belief extraction from raw text (via Haiku)
+├── agreement_detector.py  # Programmatic agreement/tension detection across providers
+├── position_tracker.py    # Stance shift tracking across debate rounds
+├── context_manager.py     # Token budgeting and round summarization
+├── prediction_market.py   # Brier-scored provider trust weighting
+├── adversarial_graph.py   # Attack priority graphs for belief testing
+├── tournament.py          # Cross-tier comparison (quick vs standard vs deep)
+├── knowledge_base.py      # Persistent confirmed beliefs with similarity search
+├── calibration_games.py   # Synthetic tasks with known ground truth
 └── providers/
     ├── base.py            # BaseProvider ABC
     ├── claude.py          # Claude via CLI
@@ -241,7 +275,7 @@ src/epistemic_agents/
 
 The core contribution is the structured schema for model-to-model epistemic communication:
 
-**Belief** — A claim with `confidence` (high/moderate/low/speculative), `justification`, `falsification_conditions`, `key_assumptions`, and `depends_on` (upstream belief IDs for dependency tracking).
+**Belief** — A claim with `confidence` (high/moderate/low/speculative), `confidence_score` (0.0–1.0 numeric), `grounding` (empirical/model_consensus/single_model/assumed), `justification`, `falsification_conditions`, `key_assumptions`, and `depends_on` (upstream belief IDs for dependency tracking). The `effective_score` property returns the numeric score if set, otherwise maps from the qualitative level.
 
 **StrategicHandoff** — The thinker's output: `intent`, `beliefs`, `plan_steps`, `decision_boundaries`, `open_questions`, and `meta_reasoning`.
 
@@ -249,8 +283,55 @@ The core contribution is the structured schema for model-to-model epistemic comm
 
 **ThinkerAmendment** — The thinker's revision: `amendment_type` (revise/clarify/delegate/abort), `updated_beliefs`, `revised_steps`, and `guidance`.
 
-**ProviderPosition** — A single model's analysis: `provider_name`, `model_id`, `beliefs`, and `raw_analysis`.
+**ProviderPosition** — A single model's analysis: `provider_name`, `model_id`, `beliefs` (structured, auto-extracted via cheap model), and `raw_analysis`.
 
-**PanelSynthesis** — The synthesizer's cross-model output: `provider_positions`, `agreements`, `tensions`, `blind_spots`, `unique_insights`, `synthesized_strategy`, and `meta_confidence`.
+**PanelSynthesis** — The synthesizer's cross-model output: `provider_positions`, `agreements`, `tensions`, `blind_spots`, `unique_insights`, `synthesized_strategy`, and `meta_confidence`. Agreements and tensions include `source_refs` for traceability.
 
 **Verdict** — Concise decision-oriented summary: `decision_point`, `recommendation`, `confidence`, `key_risk`, `dissent`, `tier_used`, and `cost_tokens`.
+
+## Advanced Systems
+
+### Belief Dependency Graph
+
+Beliefs reference upstream beliefs via `depends_on`. The BIS module (`bis.py`) computes weighted importance scores and supports:
+
+- **Cycle detection** — DFS coloring (WHITE/GRAY/BLACK) identifies circular dependencies without infinite recursion.
+- **Weighted importance** — Each dependent's weight is its `effective_score`, so high-confidence dependents make their parent more important.
+- **Testability boost** — Beliefs with more falsification conditions score higher (up to +50%).
+- **Cascade falsification** — When a belief is falsified, all downstream beliefs are flagged.
+
+### Numeric Confidence & Log-Odds Aggregation
+
+Beliefs carry both qualitative levels (high/moderate/low/speculative) and optional numeric scores (0.0–1.0). The `confidence.py` module aggregates scores via log-odds averaging, which handles extreme values better than naive averaging.
+
+### Prediction Market
+
+The `PredictionMarket` tracks provider predictions and outcomes using Brier scores. Providers that make well-calibrated predictions earn higher trust weights (`max(0.1, 2.0 - 2.0 * brier_score)`), which can inform future synthesis weighting.
+
+### Adversarial Attack Graph
+
+`build_attack_graph()` prioritizes which beliefs to test first based on: importance (BIS score), vulnerability (`(1 - confidence) * assumption_count`), and testability. High-importance, low-confidence, testable beliefs are attacked first.
+
+### Tournament System
+
+`run_tournament()` runs the same task through all three analysis tiers (quick, standard, deep) and compares whether deeper analysis changes the verdict. The `TournamentLog` tracks whether depth adds value over time.
+
+### Knowledge Base
+
+The `KnowledgeBase` stores confirmed beliefs persistently (`.epistemic_knowledge.json`) with their verification method and task origin. Future sessions retrieve relevant confirmed beliefs via Jaccard similarity search, building institutional memory.
+
+### Calibration Games
+
+`calibration_games.py` provides 10 synthetic tasks with known ground truth (binary search complexity, TCP handshake, CAP theorem nuance, etc.) for testing model accuracy. Each provider's Brier score measures how well-calibrated its confidence levels are.
+
+### Targeted Debate Prompting
+
+In debate rounds 2+, each model receives a targeted context that includes its own previous position and specific counterarguments from other models, rather than the full identical transcript. This produces more focused, productive debate.
+
+### Position Tracking
+
+`track_positions()` detects stance shifts across debate rounds — when a provider strengthens, weakens, or reverses its position on a claim. Shift summaries are injected into the synthesis prompt.
+
+### Context Management
+
+`manage_context()` handles token budgeting for long debates: earlier rounds are summarized when the context would exceed the budget, while the latest round is always kept verbatim.
