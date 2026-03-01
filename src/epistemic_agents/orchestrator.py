@@ -138,12 +138,21 @@ class Orchestrator:
         thinker = Thinker(model=self._thinker_model)
         handoff = thinker.analyze(task)
 
+        # Record usage to tracker if available
+        if self._tracker:
+            for cu in thinker.cost.calls:
+                self._tracker.record_usage("claude", cu.model, cu.input_tokens, cu.output_tokens)
+
         # Generate verdict directly from handoff
+        total_tokens = thinker.cost.total_input_tokens + thinker.cost.total_output_tokens
+        total_cost = thinker.cost.total_cost_usd
         verdict = generate_verdict(
             task=task,
             tier="quick",
             handoff=handoff,
             model=self._verdict_model,
+            total_tokens=total_tokens,
+            total_cost_usd=total_cost,
         )
 
         return OrchestratorResult(
@@ -180,15 +189,29 @@ class Orchestrator:
 
         log = loop.run(task)
 
+        # Record usage to tracker if available
+        if self._tracker:
+            for cu in thinker.cost.calls:
+                self._tracker.record_usage("claude", cu.model, cu.input_tokens, cu.output_tokens)
+            for cu in executor.cost.calls:
+                self._tracker.record_usage("claude", cu.model, cu.input_tokens, cu.output_tokens)
+
         # Get the final handoff state
         handoff = _extract_final_handoff(log)
 
+        total_tokens = (
+            thinker.cost.total_input_tokens + thinker.cost.total_output_tokens
+            + executor.cost.total_input_tokens + executor.cost.total_output_tokens
+        )
+        total_cost = thinker.cost.total_cost_usd + executor.cost.total_cost_usd
         verdict = generate_verdict(
             task=task,
             tier="standard",
             handoff=handoff,
             conversation_log=log,
             model=self._verdict_model,
+            total_tokens=total_tokens,
+            total_cost_usd=total_cost,
         )
 
         return OrchestratorResult(
@@ -277,6 +300,18 @@ class Orchestrator:
         )
         _log(f"[deep]   Verdict generated in {time.time()-t0:.1f}s")
 
+        # Record usage to tracker if available
+        if self._tracker:
+            # Deep tier doesn't use thinker/executor directly, but we can
+            # record the verdict generation cost from the thread-local
+            from epistemic_agents.client import get_last_usage
+            verdict_usage = get_last_usage()
+            if verdict_usage:
+                self._tracker.record_usage(
+                    "claude", verdict_usage.model,
+                    verdict_usage.input_tokens, verdict_usage.output_tokens,
+                )
+
         return OrchestratorResult(
             tier=Tier.DEEP,
             verdict=verdict,
@@ -311,6 +346,8 @@ def generate_verdict(
     conversation_log: ConversationLog | None = None,
     panel_synthesis: PanelSynthesis | None = None,
     model: str = "haiku",
+    total_tokens: int | None = None,
+    total_cost_usd: float | None = None,
 ) -> Verdict:
     """Distill a full analysis into a concise Verdict using a cheap model."""
     sections = [f"# Original Task\n{task}\n"]
@@ -352,6 +389,10 @@ def generate_verdict(
         response_model=Verdict,
     )
     verdict.tier_used = tier
+    if total_tokens is not None:
+        verdict.cost_tokens = total_tokens
+    if total_cost_usd is not None:
+        verdict.cost_usd = total_cost_usd
     return verdict
 
 

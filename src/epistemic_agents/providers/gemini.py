@@ -6,6 +6,7 @@ import json
 import urllib.request
 import urllib.error
 
+from epistemic_agents.client import CallUsage, compute_cost
 from epistemic_agents.providers.base import BaseProvider
 
 _GEMINI_URL = (
@@ -24,6 +25,7 @@ class GeminiProvider(BaseProvider):
         self.name = "gemini"
         self.model_id = model_id
         self._api_key = api_key
+        self._last_usage: CallUsage | None = None
 
     def analyze(self, task: str, system_prompt: str) -> str:
         url = f"{_GEMINI_URL.format(model=self.model_id)}?key={self._api_key}"
@@ -57,6 +59,19 @@ class GeminiProvider(BaseProvider):
         try:
             with urllib.request.urlopen(req, timeout=300) as resp:
                 body = json.loads(resp.read().decode())
+
+                # Extract usage metadata
+                usage_meta = body.get("usageMetadata", {})
+                input_tokens = usage_meta.get("promptTokenCount", 0)
+                output_tokens = usage_meta.get("candidatesTokenCount", 0)
+                cost = compute_cost(self.model_id, input_tokens, output_tokens)
+                self._last_usage = CallUsage(
+                    model=self.model_id,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=cost,
+                )
+
                 candidates = body.get("candidates", [])
                 if not candidates:
                     raise RuntimeError(

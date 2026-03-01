@@ -425,3 +425,7 @@ class Verdict(BaseModel):
         default=None,
         description="Approximate total tokens consumed across all models",
     )
+    cost_usd: Optional[float] = Field(
+        default=None,
+        description="Estimated total cost in USD across all models",
+    )

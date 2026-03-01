@@ -6,6 +6,7 @@ import json
 import urllib.request
 import urllib.error
 
+from epistemic_agents.client import CallUsage, compute_cost
 from epistemic_agents.providers.base import BaseProvider
 
 
@@ -27,6 +28,7 @@ class OpenAICompatProvider(BaseProvider):
         self._base_url = base_url.rstrip("/")
         self._reasoning_model = reasoning_model
         self._stream = stream
+        self._last_usage: CallUsage | None = None
 
     @classmethod
     def grok(cls, api_key: str) -> OpenAICompatProvider:
@@ -103,6 +105,7 @@ class OpenAICompatProvider(BaseProvider):
 
         if self._stream:
             payload["stream"] = True
+            payload["stream_options"] = {"include_usage": True}
 
         req = urllib.request.Request(
             url,
@@ -120,6 +123,19 @@ class OpenAICompatProvider(BaseProvider):
                 if self._stream:
                     return self._read_stream(resp)
                 body = json.loads(resp.read().decode())
+
+                # Extract usage from response
+                usage = body.get("usage", {})
+                input_tokens = usage.get("prompt_tokens", 0)
+                output_tokens = usage.get("completion_tokens", 0)
+                cost = compute_cost(self.model_id, input_tokens, output_tokens)
+                self._last_usage = CallUsage(
+                    model=self.model_id,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=cost,
+                )
+
                 return body["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             error_body = e.read().decode() if e.fp else ""
@@ -132,6 +148,7 @@ class OpenAICompatProvider(BaseProvider):
     def _read_stream(self, resp) -> str:
         """Read SSE stream and return concatenated content."""
         content_parts: list[str] = []
+        stream_usage: dict = {}
         for line in resp:
             line = line.decode().strip()
             if not line.startswith("data: "):
@@ -140,9 +157,23 @@ class OpenAICompatProvider(BaseProvider):
             if data == "[DONE]":
                 break
             chunk = json.loads(data)
-            delta = chunk["choices"][0].get("delta", {})
+            delta = chunk["choices"][0].get("delta", {}) if chunk.get("choices") else {}
             if delta.get("content"):
                 content_parts.append(delta["content"])
+            # Capture usage from final chunk (OpenAI sends it with stream_options)
+            if chunk.get("usage"):
+                stream_usage = chunk["usage"]
+
+        input_tokens = stream_usage.get("prompt_tokens", 0)
+        output_tokens = stream_usage.get("completion_tokens", 0)
+        cost = compute_cost(self.model_id, input_tokens, output_tokens)
+        self._last_usage = CallUsage(
+            model=self.model_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+        )
+
         return "".join(content_parts)
 
     @property

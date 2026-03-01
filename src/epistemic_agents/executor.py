@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from epistemic_agents.client import structured_request
+from epistemic_agents.client import CallCostTracker, get_last_usage, structured_request
 from epistemic_agents.schema import (
     ExecutorFeedback,
     StrategicHandoff,
@@ -44,8 +44,8 @@ when the strategy is wrong.
      - "convergence_failure": You can't make further progress
    - SEVERITY:
      - "blocking": Cannot continue without thinker input
-     - "degraded": Can continue but quality is compromised
-     - "informational": FYI only, no action needed
+     - "degraded": Can continue but quality/approach is compromised
+     - "informational": FYI — no action needed, but thinker should know
    - DETAIL: What happened and why
    You can report multiple escalations simultaneously.
 
@@ -88,6 +88,7 @@ class Executor:
     def __init__(self, model: str = "sonnet", additional_context: str = ""):
         self.model = model
         self.additional_context = additional_context
+        self.cost = CallCostTracker()
 
     def execute(self, handoff: StrategicHandoff) -> ExecutorFeedback:
         """Execute the strategy and report structured feedback."""
@@ -100,12 +101,16 @@ class Executor:
                 "\n\n--- ADDITIONAL CONTEXT (ground truth available to you) ---\n\n"
                 f"{self.additional_context}"
             )
-        return structured_request(
+        result = structured_request(
             model=self.model,
             system=EXECUTE_SYSTEM,
             user_message=user_message,
             response_model=ExecutorFeedback,
         )
+        usage = get_last_usage()
+        if usage:
+            self.cost.calls.append(usage)
+        return result
 
     def continue_execution(
         self,
@@ -125,9 +130,13 @@ class Executor:
                 "\n\n--- ADDITIONAL CONTEXT (ground truth available to you) ---\n\n"
                 f"{self.additional_context}"
             )
-        return structured_request(
+        result = structured_request(
             model=self.model,
             system=CONTINUE_SYSTEM,
             user_message=user_message,
             response_model=ExecutorFeedback,
         )
+        usage = get_last_usage()
+        if usage:
+            self.cost.calls.append(usage)
+        return result

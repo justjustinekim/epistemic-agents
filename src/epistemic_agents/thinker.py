@@ -6,7 +6,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from epistemic_agents.bis import cascade_falsify, rank_beliefs
-from epistemic_agents.client import structured_request
+from epistemic_agents.client import CallCostTracker, get_last_usage, structured_request
 from epistemic_agents.schema import (
     ConfidenceLevel,
     ExecutorFeedback,
@@ -129,6 +129,7 @@ class Thinker:
         self._panel = panel
         self._panel_threshold = panel_threshold
         self._calibration_context = calibration_context
+        self.cost = CallCostTracker()
         # Build the set of confidence levels that trigger panel
         self._trigger_levels = set()
         for level in ConfidenceLevel:
@@ -148,6 +149,9 @@ class Thinker:
             user_message=f"Analyze this task and produce a strategic handoff:\n\n{task}",
             response_model=StrategicHandoff,
         )
+        usage = get_last_usage()
+        if usage:
+            self.cost.calls.append(usage)
 
         # If panel is configured, consult it on uncertain beliefs
         if self._panel and self._has_uncertain_beliefs(handoff):
@@ -190,12 +194,16 @@ class Thinker:
             f"{cascade_context}\n\n"
             "Review the feedback and produce a strategic amendment."
         )
-        return structured_request(
+        result = structured_request(
             model=self.model,
             system=REVISE_SYSTEM,
             user_message=user_message,
             response_model=ThinkerAmendment,
         )
+        usage = get_last_usage()
+        if usage:
+            self.cost.calls.append(usage)
+        return result
 
     def _has_uncertain_beliefs(self, handoff: StrategicHandoff) -> bool:
         """Check if any beliefs fall at or below the panel threshold."""
@@ -261,9 +269,13 @@ class Thinker:
             + f"\n\nSynthesized Strategy:\n{synthesis.synthesized_strategy}"
         )
 
-        return structured_request(
+        result = structured_request(
             model=self.model,
             system=PANEL_AUGMENTED_SYSTEM,
             user_message=user_message,
             response_model=StrategicHandoff,
         )
+        usage = get_last_usage()
+        if usage:
+            self.cost.calls.append(usage)
+        return result

@@ -38,7 +38,8 @@ from epistemic_agents.providers import (
 )
 from epistemic_agents.ledger import BeliefLedger, BeliefOutcome, BeliefRecord
 from epistemic_agents.bis import importance_scores, rank_beliefs, cascade_falsify, detect_cycles
-from epistemic_agents.config import get_available_providers
+from epistemic_agents.client import CallUsage, CallCostTracker, get_last_usage
+from epistemic_agents.config import get_available_providers, provider_credit_status
 from epistemic_agents.panel import ModelPanel
 from epistemic_agents.synthesizer import Synthesizer
 from epistemic_agents.orchestrator import Orchestrator, Tier, OrchestratorResult, generate_verdict
@@ -113,6 +114,11 @@ __all__ = [
     "create_virtual_panelists",
     "CodeExecutorProvider",
     "get_available_providers",
+    "provider_credit_status",
+    # Per-call cost tracking
+    "CallUsage",
+    "CallCostTracker",
+    "get_last_usage",
     "ModelPanel",
     "Synthesizer",
     # Orchestrator

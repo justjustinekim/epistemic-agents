@@ -53,3 +53,77 @@ def get_available_providers(
         providers.append(CodeExecutorProvider())
 
     return providers
+
+
+def provider_credit_status() -> str:
+    """Return a summary of configured providers and their billing status."""
+    lines: list[str] = ["Provider Credit Status:", ""]
+
+    # Claude — always available via Max plan
+    lines.append("  claude (opus)        : Max plan (subscription)")
+
+    google_key = os.environ.get("GOOGLE_API_KEY", "")
+    if google_key:
+        lines.append("  gemini (2.5-flash)   : Free tier")
+    else:
+        lines.append("  gemini               : Not configured")
+
+    xai_key = os.environ.get("XAI_API_KEY", "")
+    if xai_key:
+        lines.append("  grok (grok-3)        : Pay-per-use")
+    else:
+        lines.append("  grok                 : Not configured")
+
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if deepseek_key:
+        # Try DeepSeek balance API
+        balance_info = _check_deepseek_balance(deepseek_key)
+        lines.append(f"  deepseek (reasoner)  : {balance_info}")
+    else:
+        lines.append("  deepseek             : Not configured")
+
+    dashscope_key = os.environ.get("DASHSCOPE_API_KEY", "")
+    if dashscope_key:
+        lines.append("  qwq (qwq-plus)       : Free tier")
+    else:
+        lines.append("  qwq                  : Not configured")
+
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if openai_key:
+        lines.append("  gpt (gpt-4o-mini)    : Pay-per-use")
+    else:
+        lines.append("  gpt                  : Not configured")
+
+    perplexity_key = os.environ.get("PERPLEXITY_API_KEY", "")
+    if perplexity_key:
+        lines.append("  perplexity (sonar)   : Pay-per-use")
+    else:
+        lines.append("  perplexity           : Not configured")
+
+    return "\n".join(lines)
+
+
+def _check_deepseek_balance(api_key: str) -> str:
+    """Try the DeepSeek balance API. Return status string."""
+    import json
+    import urllib.request
+    import urllib.error
+
+    try:
+        req = urllib.request.Request(
+            "https://api.deepseek.com/user/balance",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            # DeepSeek returns balance_infos with currency and total_balance
+            infos = data.get("balance_infos", [])
+            if infos:
+                bal = infos[0]
+                return f"Pay-per-use (balance: {bal.get('currency', 'USD')} {bal.get('total_balance', '?')})"
+            return "Pay-per-use"
+    except Exception:
+        return "Pay-per-use (balance check failed)"

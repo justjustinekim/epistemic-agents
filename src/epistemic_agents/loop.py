@@ -148,6 +148,19 @@ class EpistemicLoop:
                     f"\n  [dim]Ledger: recorded {len(records)} belief outcome(s)[/dim]"
                 )
 
+        # Print cost summary
+        if self.verbose:
+            t_cost = self.thinker.cost.total_cost_usd
+            t_calls = len(self.thinker.cost.calls)
+            e_cost = self.executor.cost.total_cost_usd
+            e_calls = len(self.executor.cost.calls)
+            total = t_cost + e_cost
+            console.print(
+                f"\n  [dim]Cost: ${total:.4f} "
+                f"(thinker: ${t_cost:.4f} / {t_calls} calls, "
+                f"executor: ${e_cost:.4f} / {e_calls} calls)[/dim]"
+            )
+
         return log
 
 
