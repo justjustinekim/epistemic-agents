@@ -92,6 +92,11 @@ class Belief(BaseModel):
         default=None,
         description="Numeric confidence 0.0-1.0, optional alongside qualitative level",
     )
+    reasoning_basis: str | None = Field(
+        default=None,
+        description="The core reasoning path used to arrive at this belief — "
+        "enables latent disagreement detection when claims agree but reasoning diverges",
+    )
 
     @property
     def effective_score(self) -> float:
@@ -429,3 +434,33 @@ class Verdict(BaseModel):
         default=None,
         description="Estimated total cost in USD across all models",
     )
+
+
+class PanelResponse(BaseModel):
+    """Structured response from a provider that supports structured output."""
+
+    beliefs: list[Belief]
+    raw_analysis: str = Field(description="Free-text analysis preserved for debate context")
+
+
+class DebatePlan(BaseModel):
+    """LLM-generated routing decision for task complexity."""
+
+    tier: str = Field(description="'quick', 'standard', or 'deep'")
+    reasoning: str = Field(description="Why this tier was chosen")
+    confidence_in_routing: float = Field(
+        description="0.0-1.0 confidence in the routing decision"
+    )
+
+
+class DebateCheckpoint(BaseModel):
+    """Checkpoint for resuming failed deep-tier debates."""
+
+    task: str
+    phase: int = Field(description="1=debate, 2=synthesis, 3=refutation, 4=resynthesis, 5=verdict")
+    phase_name: str
+    rounds: list = Field(default_factory=list)
+    synthesis: PanelSynthesis | None = None
+    refutations: list = Field(default_factory=list)
+    final_synthesis: PanelSynthesis | None = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

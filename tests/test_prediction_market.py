@@ -86,6 +86,57 @@ def test_prediction_market_persistence():
         assert "claude" in market2.records
 
 
+def test_domain_record_defaults():
+    from epistemic_agents.prediction_market import DomainRecord
+    dr = DomainRecord(domain="ml")
+    assert dr.count == 2
+    assert dr.brier_score == 0.25  # 0.5 / 2
+    assert dr.weight == max(0.1, 2.0 - 2.0 * 0.25)
+
+
+def test_domain_record_perfect():
+    from epistemic_agents.prediction_market import DomainRecord
+    dr = DomainRecord(domain="ml", brier_score_sum=0.0, count=10)
+    assert dr.brier_score == 0.0
+    assert dr.weight == 2.0
+
+
+def test_domain_record_empty_count():
+    from epistemic_agents.prediction_market import DomainRecord
+    dr = DomainRecord(domain="ml", brier_score_sum=0.0, count=0)
+    assert dr.brier_score == 0.25
+
+
+def test_get_weight_with_domain():
+    from epistemic_agents.prediction_market import DomainRecord
+    with tempfile.TemporaryDirectory() as d:
+        market = PredictionMarket(path=Path(d) / "predictions.json")
+        market._records["claude"] = ProviderTrackRecord(
+            provider_name="claude",
+            total_predictions=10,
+            brier_score_sum=2.5,
+            domain_scores={"ml": DomainRecord(domain="ml", brier_score_sum=0.0, count=5)},
+        )
+        # Domain-specific weight should differ from global
+        global_w = market.get_weight("claude")
+        domain_w = market.get_weight("claude", domain="ml")
+        assert domain_w == 2.0  # Perfect domain score
+        assert global_w != domain_w
+
+
+def test_get_weight_domain_fallback():
+    with tempfile.TemporaryDirectory() as d:
+        market = PredictionMarket(path=Path(d) / "predictions.json")
+        market._records["claude"] = ProviderTrackRecord(
+            provider_name="claude",
+            total_predictions=10,
+            brier_score_sum=2.5,
+        )
+        # No domain scores, should fall back to global
+        w = market.get_weight("claude", domain="unknown_domain")
+        assert w == market.get_weight("claude")
+
+
 def test_resolve_no_matching_predictions():
     with tempfile.TemporaryDirectory() as d:
         market = PredictionMarket(path=Path(d) / "predictions.json")

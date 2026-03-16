@@ -8,6 +8,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from epistemic_agents.rag import _tokenize, _jaccard_similarity
+from epistemic_agents.schema import ProviderPosition
+
 
 class Prediction(BaseModel):
     """A provider's prediction on a claim."""
@@ -33,6 +36,7 @@ class ProviderTrackRecord(BaseModel):
     provider_name: str
     total_predictions: int = 0
     brier_score_sum: float = 0.0
+    domain_scores: dict[str, DomainRecord] = Field(default_factory=dict)
 
     @property
     def brier_score(self) -> float:
@@ -52,6 +56,96 @@ class ProviderTrackRecord(BaseModel):
         return max(0.1, 2.0 - 2.0 * self.brier_score)
 
 
+class DomainRecord(BaseModel):
+    """Per-domain calibration record for a provider."""
+    domain: str
+    brier_score_sum: float = 0.5  # Bayesian prior: 2 predictions at 0.25 Brier
+    count: int = 2  # Prior count
+
+    @property
+    def brier_score(self) -> float:
+        if self.count == 0:
+            return 0.25
+        return self.brier_score_sum / self.count
+
+    @property
+    def weight(self) -> float:
+        return max(0.1, 2.0 - 2.0 * self.brier_score)
+
+
+class PairwiseTracker(BaseModel):
+    """Track pairwise agreement rates between providers across debate rounds."""
+
+    # Maps "provA|provB" (sorted) -> list of agreement booleans per round
+    _pair_history: dict[str, list[bool]] = {}
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._pair_history = data.get("_pair_history", {})
+
+    def record_round(self, positions: list[ProviderPosition]) -> None:
+        """Compare beliefs across providers and record pairwise agreement."""
+        providers = [(p.provider_name, p.beliefs) for p in positions if p.beliefs]
+        for i in range(len(providers)):
+            for j in range(i + 1, len(providers)):
+                name_a, beliefs_a = providers[i]
+                name_b, beliefs_b = providers[j]
+                key = "|".join(sorted([name_a, name_b]))
+                agreed = self._check_agreement(beliefs_a, beliefs_b)
+                self._pair_history.setdefault(key, []).append(agreed)
+
+    @staticmethod
+    def _check_agreement(beliefs_a, beliefs_b) -> bool:
+        """Two providers agree if any belief pair has claim similarity > 0.4 AND confidence gap < 0.2."""
+        for ba in beliefs_a:
+            tokens_a = _tokenize(ba.claim)
+            for bb in beliefs_b:
+                tokens_b = _tokenize(bb.claim)
+                if _jaccard_similarity(tokens_a, tokens_b) > 0.4:
+                    gap = abs(ba.effective_score - bb.effective_score)
+                    if gap < 0.2:
+                        return True
+        return False
+
+    def pairwise_rates(self) -> dict[tuple[str, str], float]:
+        """Rolling agreement rate per provider pair."""
+        rates: dict[tuple[str, str], float] = {}
+        for key, history in self._pair_history.items():
+            if not history:
+                continue
+            parts = key.split("|")
+            rate = sum(history) / len(history)
+            rates[(parts[0], parts[1])] = rate
+        return rates
+
+    def avg_correlation(self) -> float:
+        """Mean of all pairwise agreement rates."""
+        rates = self.pairwise_rates()
+        if not rates:
+            return 0.0
+        return sum(rates.values()) / len(rates)
+
+    def n_eff(self, n_providers: int) -> float:
+        """Effective independent panel size: N / (1 + (N-1) * avg_corr)."""
+        if n_providers <= 1:
+            return float(n_providers)
+        corr = max(0.0, self.avg_correlation())
+        return n_providers / (1.0 + (n_providers - 1) * corr)
+
+    def to_dict(self) -> dict:
+        """Serialize for JSON storage."""
+        return {"pair_history": self._pair_history}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PairwiseTracker":
+        """Deserialize from JSON storage."""
+        tracker = cls()
+        tracker._pair_history = data.get("pair_history", {})
+        return tracker
+
+
 class PredictionMarket:
     """Track and score provider predictions for calibration-weighted trust."""
 
@@ -60,6 +154,7 @@ class PredictionMarket:
         self._predictions: list[Prediction] = []
         self._resolutions: list[Resolution] = []
         self._records: dict[str, ProviderTrackRecord] = {}
+        self.pairwise_tracker: PairwiseTracker = PairwiseTracker()
         if self._path.exists():
             self._load()
 
@@ -71,6 +166,9 @@ class PredictionMarket:
             name: ProviderTrackRecord.model_validate(rec)
             for name, rec in data.get("records", {}).items()
         }
+        pw_data = data.get("pairwise_tracker")
+        if pw_data:
+            self.pairwise_tracker = PairwiseTracker.from_dict(pw_data)
 
     def _save(self) -> None:
         data = {
@@ -80,6 +178,7 @@ class PredictionMarket:
                 name: rec.model_dump(mode="json")
                 for name, rec in self._records.items()
             },
+            "pairwise_tracker": self.pairwise_tracker.to_dict(),
         }
         self._path.write_text(json.dumps(data, indent=2, default=str))
 
@@ -114,11 +213,13 @@ class PredictionMarket:
         self._save()
         return updated
 
-    def get_weight(self, provider_name: str) -> float:
+    def get_weight(self, provider_name: str, domain: str | None = None) -> float:
         """Get a provider's trust weight based on prediction track record."""
         record = self._records.get(provider_name)
         if record is None:
             return 1.0  # No track record → neutral weight
+        if domain and domain in record.domain_scores:
+            return record.domain_scores[domain].weight
         return record.weight
 
     @property

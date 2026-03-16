@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from epistemic_agents.client import CallUsage
+    from epistemic_agents.schema import PanelResponse
 
 
 class BaseProvider(ABC):
@@ -19,6 +20,17 @@ class BaseProvider(ABC):
     @abstractmethod
     def analyze(self, task: str, system_prompt: str) -> str:
         """Send task to model, return raw text analysis."""
+
+    @property
+    def supports_structured_output(self) -> bool:
+        """Whether this provider can return structured PanelResponse directly."""
+        return False
+
+    def structured_analyze(self, task: str, system_prompt: str) -> PanelResponse:
+        """Return structured PanelResponse. Only available if supports_structured_output is True."""
+        raise NotImplementedError(
+            f"{self.name} does not support structured output"
+        )
 
     @property
     def available(self) -> bool:

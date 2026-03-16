@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 
+from epistemic_agents.prediction_market import PairwiseTracker
 from epistemic_agents.providers.base import BaseProvider
 from epistemic_agents.schema import PanelSynthesis, ProviderPosition
+
+# Per-provider timeout for parallel queries (seconds).
+# Individual provider calls (API or CLI) have their own timeouts;
+# this is the outer bound on waiting for all futures.
+_PROVIDER_TIMEOUT = int(os.environ.get("PANEL_PROVIDER_TIMEOUT", "600"))
 
 PANEL_SYSTEM_PROMPT = """\
 You are participating in a multi-model analysis panel. Your job is to provide a deep, \
@@ -73,12 +80,14 @@ class ModelPanel:
         providers: list[BaseProvider],
         extract_beliefs: bool = True,
         extraction_model: str = "haiku",
+        pairwise_tracker: PairwiseTracker | None = None,
     ) -> None:
         self.providers = [p for p in providers if p.available]
         if not self.providers:
             raise ValueError("No available providers configured")
         self._extract_beliefs = extract_beliefs
         self._extraction_model = extraction_model
+        self.pairwise_tracker = pairwise_tracker or PairwiseTracker()
 
     def run(self, task: str, system_prompt: str | None = None) -> list[ProviderPosition]:
         """Query all providers in parallel and return their positions."""
@@ -92,17 +101,17 @@ class ModelPanel:
         on_round: callable | None = None,
         initial_system_prompt: str | None = None,
     ) -> list[list[ProviderPosition]]:
-        """Multi-round debate where models respond to each other's analyses.
+        """Multi-round debate with vote-then-debate optimization.
 
         Round 1: Independent analysis (parallel).
-        Round 2+: Each model sees all previous analyses and responds (parallel).
+        After Round 1: majority_vote() locks high-consensus beliefs.
+        Round 2+: Only contested beliefs are debated.
 
         Args:
             task: The task to analyze.
             rounds: Total rounds (including initial analysis). Minimum 2.
             on_round: Optional callback(round_num, positions) called after each round.
             initial_system_prompt: Optional system prompt override for Round 1 only.
-                Useful for injecting RAG context into the initial analysis.
 
         Returns:
             List of position lists, one per round.
@@ -113,11 +122,37 @@ class ModelPanel:
         # Round 1: Independent analysis
         positions = self.run(task, system_prompt=initial_system_prompt)
         all_rounds.append(positions)
+        self.pairwise_tracker.record_round(positions)
         if on_round:
             on_round(1, positions)
 
+        # Vote-then-debate: lock high-consensus beliefs after Round 1
+        self._locked_agreements = []
+        self._contested_beliefs = []
+        try:
+            from epistemic_agents.agreement_detector import majority_vote
+            n_eff = self.pairwise_tracker.n_eff(len(self.providers))
+            locked, contested = majority_vote(positions, n_eff)
+            self._locked_agreements = locked
+            self._contested_beliefs = contested
+        except Exception:
+            pass
+
+        # Track sycophantic providers for prompt injection
+        sycophantic_providers: set[str] = set()
+
         # Subsequent rounds: models respond to each other
         for round_num in range(2, rounds + 1):
+            # Detect sycophancy from previous rounds
+            if len(all_rounds) >= 2:
+                try:
+                    from epistemic_agents.position_tracker import track_positions, detect_sycophancy
+                    shifts = track_positions(all_rounds)
+                    shifts = detect_sycophancy(shifts, all_rounds)
+                    sycophantic_providers = {s.provider_name for s in shifts if s.is_sycophantic}
+                except Exception:
+                    pass
+
             # Use targeted prompting if beliefs are populated
             has_beliefs = any(
                 pos.beliefs
@@ -125,11 +160,14 @@ class ModelPanel:
                 for pos in round_positions
             )
             if has_beliefs:
-                positions = self._targeted_parallel_query(task, all_rounds)
+                positions = self._targeted_parallel_query(
+                    task, all_rounds, sycophantic_providers=sycophantic_providers,
+                )
             else:
                 debate_prompt = self._build_debate_context(task, all_rounds)
                 positions = self._parallel_query(debate_prompt, DEBATE_SYSTEM_PROMPT)
             all_rounds.append(positions)
+            self.pairwise_tracker.record_round(positions)
             if on_round:
                 on_round(round_num, positions)
 
@@ -197,7 +235,7 @@ class ModelPanel:
         task: str,
         system_prompt: str,
     ) -> list[ProviderPosition]:
-        """Query all providers in parallel."""
+        """Query all providers in parallel with timeout protection."""
         positions: list[ProviderPosition] = []
 
         with ThreadPoolExecutor(max_workers=len(self.providers)) as pool:
@@ -213,16 +251,34 @@ class ModelPanel:
                 for provider in self.providers
             }
 
-            for future in as_completed(futures):
-                provider = futures[future]
-                try:
-                    position = future.result()
-                    positions.append(position)
-                except Exception as exc:
-                    print(
-                        f"[panel] {provider.name} ({provider.model_id}) failed: {exc}",
-                        file=sys.stderr,
-                    )
+            try:
+                for future in as_completed(futures, timeout=_PROVIDER_TIMEOUT):
+                    provider = futures[future]
+                    try:
+                        position = future.result()
+                        positions.append(position)
+                    except Exception as exc:
+                        print(
+                            f"[panel] {provider.name} ({provider.model_id}) failed: {exc}",
+                            file=sys.stderr,
+                        )
+            except TimeoutError:
+                timed_out = [
+                    p.name for f, p in futures.items() if not f.done()
+                ]
+                print(
+                    f"[panel] Timed out waiting for providers: {', '.join(timed_out)}",
+                    file=sys.stderr,
+                )
+                for f in futures:
+                    if not f.done():
+                        f.cancel()
+
+        if not positions:
+            print(
+                "[panel] WARNING: All providers failed — no positions returned",
+                file=sys.stderr,
+            )
 
         return positions
 
@@ -230,9 +286,11 @@ class ModelPanel:
         self,
         task: str,
         all_rounds: list[list[ProviderPosition]],
+        sycophantic_providers: set[str] | None = None,
     ) -> list[ProviderPosition]:
         """Query each provider with a targeted prompt specific to them."""
         positions: list[ProviderPosition] = []
+        sycophantic_providers = sycophantic_providers or set()
 
         with ThreadPoolExecutor(max_workers=len(self.providers)) as pool:
             futures = {}
@@ -240,6 +298,14 @@ class ModelPanel:
                 targeted_prompt = self._build_targeted_debate_context(
                     task, all_rounds, provider.name
                 )
+                # Inject anti-sycophancy warning for flagged providers
+                if provider.name in sycophantic_providers:
+                    targeted_prompt += (
+                        "\n\nWARNING: Your previous response appeared to adopt "
+                        "another model's position without substantive new reasoning. "
+                        "Any position change MUST include a NEW argument not "
+                        "previously stated by any participant."
+                    )
                 futures[pool.submit(
                     self._query_provider,
                     provider,
@@ -249,16 +315,28 @@ class ModelPanel:
                     self._extraction_model,
                 )] = provider
 
-            for future in as_completed(futures):
-                provider = futures[future]
-                try:
-                    position = future.result()
-                    positions.append(position)
-                except Exception as exc:
-                    print(
-                        f"[panel] {provider.name} ({provider.model_id}) failed: {exc}",
-                        file=sys.stderr,
-                    )
+            try:
+                for future in as_completed(futures, timeout=_PROVIDER_TIMEOUT):
+                    provider = futures[future]
+                    try:
+                        position = future.result()
+                        positions.append(position)
+                    except Exception as exc:
+                        print(
+                            f"[panel] {provider.name} ({provider.model_id}) failed: {exc}",
+                            file=sys.stderr,
+                        )
+            except TimeoutError:
+                timed_out = [
+                    p.name for f, p in futures.items() if not f.done()
+                ]
+                print(
+                    f"[panel] Timed out waiting for providers: {', '.join(timed_out)}",
+                    file=sys.stderr,
+                )
+                for f in futures:
+                    if not f.done():
+                        f.cancel()
 
         return positions
 
@@ -270,11 +348,7 @@ class ModelPanel:
     ) -> str:
         """Build debate context targeted for a specific provider.
 
-        Includes:
-        - The target's own previous position
-        - Counterarguments from other models (via belief similarity)
-        - Summaries of other positions (truncated)
-        - Directive to address counterarguments
+        For rounds 2+, uses state deltas instead of full text for efficiency.
         """
         from epistemic_agents.rag import _tokenize, _jaccard_similarity
 
@@ -296,15 +370,27 @@ class ModelPanel:
                 f"{target_pos.raw_analysis[:2000]}\n"
             )
 
-        # Find counterarguments from other models
-        other_positions = []
-        for round_positions in all_rounds:
-            for pos in round_positions:
-                if pos.provider_name != target_provider:
-                    other_positions.append(pos)
+        # Use state deltas for rounds 2+ when beliefs are available
+        has_beliefs = any(
+            pos.beliefs
+            for round_positions in all_rounds
+            for pos in round_positions
+        )
+        if has_beliefs and len(all_rounds) >= 2:
+            try:
+                from epistemic_agents.position_tracker import compute_deltas
+                deltas = compute_deltas(all_rounds)
+                if deltas:
+                    sections.append(f"---\n# STATE CHANGES:\n{deltas}\n")
+            except Exception:
+                pass
 
-        sections.append("---\n# OTHER MODELS' POSITIONS:\n")
-        for pos in other_positions:
+        # Find counterarguments from other models (use latest round only for efficiency)
+        latest_round = all_rounds[-1] if all_rounds else []
+        other_latest = [pos for pos in latest_round if pos.provider_name != target_provider]
+
+        sections.append("---\n# OTHER MODELS' LATEST POSITIONS:\n")
+        for pos in other_latest:
             sections.append(
                 f"## {pos.provider_name} ({pos.model_id}):\n"
                 f"{pos.raw_analysis[:500]}...\n"
@@ -350,6 +436,24 @@ class ModelPanel:
         extract_beliefs: bool = False,
         extraction_model: str = "haiku",
     ) -> ProviderPosition:
+        # Try structured output path first if provider supports it
+        if extract_beliefs and provider.supports_structured_output:
+            try:
+                panel_response = provider.structured_analyze(task, system_prompt)
+                return ProviderPosition(
+                    provider_name=provider.name,
+                    model_id=provider.model_id,
+                    beliefs=panel_response.beliefs,
+                    raw_analysis=panel_response.raw_analysis,
+                )
+            except Exception as exc:
+                print(
+                    f"[panel] Structured output failed for {provider.name}, "
+                    f"falling back to extraction: {exc}",
+                    file=sys.stderr,
+                )
+
+        # Fallback: plain analyze + belief extraction
         raw = provider.analyze(task, system_prompt)
         beliefs: list = []
 

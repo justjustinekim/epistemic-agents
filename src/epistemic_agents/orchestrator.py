@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -13,6 +14,8 @@ from epistemic_agents.ledger import BeliefLedger
 from epistemic_agents.loop import EpistemicLoop
 from epistemic_agents.schema import (
     ConversationLog,
+    DebateCheckpoint,
+    DebatePlan,
     PanelSynthesis,
     StrategicHandoff,
     Verdict,
@@ -76,6 +79,38 @@ class Orchestrator:
         self._feedback_log = feedback_log
         self._tracker = tracker
 
+    @staticmethod
+    def _checkpoint_path(task: str, phase: int) -> Path:
+        from pathlib import Path
+        task_hash = hashlib.md5(task.encode()).hexdigest()[:12]
+        checkpoint_dir = Path(".epistemic_checkpoints")
+        checkpoint_dir.mkdir(exist_ok=True)
+        return checkpoint_dir / f"{task_hash}_{phase}.json"
+
+    def _save_checkpoint(self, checkpoint: "DebateCheckpoint") -> None:
+        import json
+        path = self._checkpoint_path(checkpoint.task, checkpoint.phase)
+        path.write_text(json.dumps(checkpoint.model_dump(mode="json"), indent=2, default=str))
+
+    @classmethod
+    def load_checkpoint(cls, task: str) -> "DebateCheckpoint | None":
+        """Load the latest checkpoint for a task."""
+        import json
+        from pathlib import Path
+        task_hash = hashlib.md5(task.encode()).hexdigest()[:12]
+        checkpoint_dir = Path(".epistemic_checkpoints")
+        if not checkpoint_dir.exists():
+            return None
+        # Find latest phase
+        best = None
+        for phase in range(5, 0, -1):
+            path = checkpoint_dir / f"{task_hash}_{phase}.json"
+            if path.exists():
+                data = json.loads(path.read_text())
+                best = DebateCheckpoint.model_validate(data)
+                break
+        return best
+
     def run(self, task: str, tier: Tier | str = Tier.STANDARD) -> OrchestratorResult:
         """Run the appropriate tier and return a unified result."""
         if isinstance(tier, str):
@@ -107,11 +142,39 @@ class Orchestrator:
         return self.run(task, tier)
 
     def _classify_task(self, task: str) -> Tier:
-        """Simple heuristic classification of task complexity."""
+        """Classify task complexity using cheap LLM call with heuristic fallback."""
+        try:
+            plan = client.structured_request(
+                model=self._verdict_model,
+                system=(
+                    "You are a task complexity router. Classify the task into one of three tiers:\n"
+                    "- 'quick': Simple factual questions, definitions, single-step tasks\n"
+                    "- 'standard': Tasks needing iteration, moderate complexity\n"
+                    "- 'deep': High-stakes decisions, tradeoffs, multi-perspective analysis\n\n"
+                    "Respond with your classification, reasoning, and confidence."
+                ),
+                user_message=task,
+                response_model=DebatePlan,
+            )
+            tier_map = {"quick": Tier.QUICK, "standard": Tier.STANDARD, "deep": Tier.DEEP}
+            tier = tier_map.get(plan.tier.lower(), Tier.STANDARD)
+
+            # Asymmetric thresholds: easy to escalate UP, hard to route DOWN
+            if tier == Tier.DEEP and plan.confidence_in_routing < 0.5:
+                tier = Tier.STANDARD
+            elif tier == Tier.QUICK and plan.confidence_in_routing < 0.8:
+                tier = Tier.STANDARD
+
+            return tier
+        except Exception:
+            return self._classify_task_heuristic(task)
+
+    @staticmethod
+    def _classify_task_heuristic(task: str) -> Tier:
+        """Keyword-based fallback classification of task complexity."""
         task_lower = task.lower()
         length = len(task)
 
-        # Deep indicators
         deep_signals = [
             "tradeoff", "trade-off", "strategy", "architecture",
             "high-stakes", "critical", "multi-model", "debate",
@@ -120,7 +183,6 @@ class Orchestrator:
         ]
         deep_count = sum(1 for s in deep_signals if s in task_lower)
 
-        # Quick indicators
         quick_signals = [
             "what is", "how do i", "explain", "define",
             "quick", "simple", "just",
@@ -272,32 +334,70 @@ class Orchestrator:
         _log("[deep] Phase 2: Cross-model synthesis...")
         t0 = time.time()
         synthesizer = Synthesizer(model=self._thinker_model)
-        synthesis = synthesizer.synthesize_debate(task, rounds)
+        try:
+            synthesis = synthesizer.synthesize_debate(task, rounds)
+        except Exception as exc:
+            _log(f"[deep]   Synthesis FAILED ({type(exc).__name__}: {exc}). Falling back to standard tier.")
+            return self._run_standard(task)
         _log(f"[deep]   Synthesis complete in {time.time()-t0:.1f}s")
+        self._save_checkpoint(DebateCheckpoint(
+            task=task, phase=2, phase_name="synthesis",
+            rounds=[pos.model_dump(mode="json") for rnd in rounds for pos in rnd],
+            synthesis=synthesis,
+        ))
 
-        # Phase 3: Refutation
+        # Phase 3: Refutation — non-fatal, skip if it fails
+        refutations = []
         _log("[deep] Phase 3: Panel refutation...")
         t0 = time.time()
-        refutations = self._panel.refute(task, rounds, synthesis)
-        _log(f"[deep]   {len(refutations)} refutations in {time.time()-t0:.1f}s")
+        try:
+            refutations = self._panel.refute(task, rounds, synthesis)
+            _log(f"[deep]   {len(refutations)} refutations in {time.time()-t0:.1f}s")
+        except Exception as exc:
+            _log(f"[deep]   Refutation FAILED ({type(exc).__name__}: {exc}). Skipping.")
 
-        # Phase 4: Re-synthesis
-        _log("[deep] Phase 4: Final re-synthesis (post-refutation)...")
-        t0 = time.time()
-        final_synthesis = synthesizer.resynthesize(task, rounds, synthesis, refutations)
-        _log(f"[deep]   Re-synthesis complete in {time.time()-t0:.1f}s")
+        # Phase 4: Re-synthesis (skip if no refutations)
+        final_synthesis = synthesis
+        if refutations:
+            _log("[deep] Phase 4: Final re-synthesis (post-refutation)...")
+            t0 = time.time()
+            try:
+                final_synthesis = synthesizer.resynthesize(task, rounds, synthesis, refutations)
+                _log(f"[deep]   Re-synthesis complete in {time.time()-t0:.1f}s")
+                self._save_checkpoint(DebateCheckpoint(
+                    task=task, phase=4, phase_name="resynthesis",
+                    rounds=[pos.model_dump(mode="json") for rnd in rounds for pos in rnd],
+                    synthesis=synthesis,
+                    refutations=[r.model_dump(mode="json") for r in refutations],
+                    final_synthesis=final_synthesis,
+                ))
+            except Exception as exc:
+                _log(f"[deep]   Re-synthesis FAILED ({type(exc).__name__}: {exc}). Using initial synthesis.")
+        else:
+            _log("[deep] Phase 4: Skipped (no refutations to incorporate)")
 
         # Phase 5: Generate verdict directly from panel synthesis
         # The panel debate + synthesis + refutation + re-synthesis IS the deep analysis.
         # Running an additional thinker-executor loop is redundant and risks context overflow.
         _log("[deep] Phase 5: Generating verdict...")
         t0 = time.time()
-        verdict = generate_verdict(
-            task=task,
-            tier="deep",
-            panel_synthesis=final_synthesis,
-            model=self._verdict_model,
-        )
+        try:
+            verdict = generate_verdict(
+                task=task,
+                tier="deep",
+                panel_synthesis=final_synthesis,
+                model=self._verdict_model,
+            )
+        except Exception as exc:
+            _log(f"[deep]   Verdict generation FAILED ({type(exc).__name__}: {exc}). Creating fallback verdict.")
+            verdict = Verdict(
+                decision_point="See panel synthesis for full analysis.",
+                recommendation=final_synthesis.synthesized_strategy[:500] if final_synthesis.synthesized_strategy else "Analysis completed but verdict generation failed.",
+                confidence="moderate",
+                key_risk="Verdict generation failed — review panel synthesis directly.",
+                dissent="",
+                tier_used="deep",
+            )
         _log(f"[deep]   Verdict generated in {time.time()-t0:.1f}s")
 
         # Record usage to tracker if available

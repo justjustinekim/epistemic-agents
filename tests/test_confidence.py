@@ -73,6 +73,46 @@ def test_aggregate_beliefs_confidence_empty():
     assert aggregate_beliefs_confidence([]) == 0.5
 
 
+def test_extremize_identity():
+    from epistemic_agents.confidence import extremize
+    assert abs(extremize(0.7, d=1.0) - 0.7) < 1e-10
+
+
+def test_extremize_pushes_toward_extremes():
+    from epistemic_agents.confidence import extremize
+    p = 0.7
+    result = extremize(p, d=2.0)
+    assert result > p  # Pushed toward 1
+
+
+def test_extremize_pushes_low_toward_zero():
+    from epistemic_agents.confidence import extremize
+    p = 0.3
+    result = extremize(p, d=2.0)
+    assert result < p  # Pushed toward 0
+
+
+def test_extremize_symmetric():
+    from epistemic_agents.confidence import extremize
+    high = extremize(0.8, d=2.0)
+    low = extremize(0.2, d=2.0)
+    assert abs(high + low - 1.0) < 1e-10
+
+
+def test_aggregate_extremized_without_neff():
+    from epistemic_agents.confidence import aggregate_confidence_extremized
+    result = aggregate_confidence_extremized([0.8, 0.8], n_eff=None)
+    assert abs(result - 0.8) < 1e-10
+
+
+def test_aggregate_extremized_with_neff():
+    from epistemic_agents.confidence import aggregate_confidence_extremized
+    base = aggregate_confidence_extremized([0.8, 0.8], n_eff=1.0)
+    ext = aggregate_confidence_extremized([0.8, 0.8], n_eff=5.0)
+    # With higher n_eff, should be more extreme (pushed further from 0.5)
+    assert ext >= base
+
+
 def test_aggregate_beliefs_confidence_with_numeric():
     beliefs = [
         Belief(

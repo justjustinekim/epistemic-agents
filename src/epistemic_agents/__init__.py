@@ -23,6 +23,9 @@ from epistemic_agents.schema import (
     score_to_confidence_level,
     VerificationMethod,
     Verdict,
+    PanelResponse,
+    DebatePlan,
+    DebateCheckpoint,
 )
 from epistemic_agents.thinker import Thinker
 from epistemic_agents.executor import Executor
@@ -37,7 +40,7 @@ from epistemic_agents.providers import (
     CodeExecutorProvider,
 )
 from epistemic_agents.ledger import BeliefLedger, BeliefOutcome, BeliefRecord
-from epistemic_agents.bis import importance_scores, rank_beliefs, cascade_falsify, detect_cycles
+from epistemic_agents.bis import importance_scores, rank_beliefs, cascade_falsify, detect_cycles, topological_sort
 from epistemic_agents.client import CallUsage, CallCostTracker, get_last_usage
 from epistemic_agents.config import get_available_providers, provider_credit_status
 from epistemic_agents.panel import ModelPanel
@@ -48,12 +51,12 @@ from epistemic_agents.feedback import SessionFeedback, FeedbackLog, collect_feed
 from epistemic_agents.rag import build_rag_context
 
 # New modules
-from epistemic_agents.confidence import aggregate_confidence, aggregate_beliefs_confidence
+from epistemic_agents.confidence import aggregate_confidence, aggregate_beliefs_confidence, extremize, aggregate_confidence_extremized
 from epistemic_agents.belief_extractor import extract_beliefs, ExtractedBeliefs
 from epistemic_agents.agreement_detector import detect_agreements, detect_tensions
-from epistemic_agents.position_tracker import StanceShift, track_positions, format_position_summary
+from epistemic_agents.position_tracker import StanceShift, track_positions, format_position_summary, detect_sycophancy, compute_deltas
 from epistemic_agents.context_manager import estimate_tokens, manage_context
-from epistemic_agents.prediction_market import PredictionMarket, Prediction, Resolution, ProviderTrackRecord
+from epistemic_agents.prediction_market import PredictionMarket, Prediction, Resolution, ProviderTrackRecord, PairwiseTracker, DomainRecord
 from epistemic_agents.adversarial_graph import AttackGraph, AttackNode, build_attack_graph
 from epistemic_agents.tournament import TournamentResult, TournamentLog, run_tournament
 from epistemic_agents.knowledge_base import KnowledgeBase, KnowledgeEntry
@@ -64,6 +67,8 @@ from epistemic_agents.calibration_games import (
     run_calibration_game,
 )
 from epistemic_agents.ledger import classify_domain
+from epistemic_agents.memory import EpistemicMemory, MemoryResult
+from epistemic_agents.auto_verify import classify_verifiable, auto_verify
 
 __all__ = [
     # Core epistemic protocol
@@ -85,6 +90,9 @@ __all__ = [
     "score_to_confidence_level",
     "VerificationMethod",
     "Verdict",
+    "PanelResponse",
+    "DebatePlan",
+    "DebateCheckpoint",
     # Agents
     "Thinker",
     "Executor",
@@ -99,6 +107,7 @@ __all__ = [
     "rank_beliefs",
     "cascade_falsify",
     "detect_cycles",
+    "topological_sort",
     # Multi-model panel
     "ProviderPosition",
     "AgreementPoint",
@@ -140,6 +149,8 @@ __all__ = [
     # Confidence
     "aggregate_confidence",
     "aggregate_beliefs_confidence",
+    "extremize",
+    "aggregate_confidence_extremized",
     # Belief extraction
     "extract_beliefs",
     "ExtractedBeliefs",
@@ -158,6 +169,8 @@ __all__ = [
     "Prediction",
     "Resolution",
     "ProviderTrackRecord",
+    "PairwiseTracker",
+    "DomainRecord",
     # Adversarial graph
     "AttackGraph",
     "AttackNode",
@@ -174,4 +187,10 @@ __all__ = [
     "CalibrationGameResult",
     "CALIBRATION_TASKS",
     "run_calibration_game",
+    # Memory facade
+    "EpistemicMemory",
+    "MemoryResult",
+    # Auto-verify
+    "classify_verifiable",
+    "auto_verify",
 ]

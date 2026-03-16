@@ -124,6 +124,52 @@ def rank_beliefs(beliefs: list[Belief]) -> list[tuple[Belief, float]]:
     return ranked
 
 
+def topological_sort(beliefs: list[Belief]) -> list[Belief]:
+    """Return beliefs in dependency order (roots first) using Kahn's algorithm.
+
+    If cycles exist (detected by detect_cycles()), back-edges are broken
+    and a warning is logged. Beliefs without dependencies come first.
+    """
+    if not beliefs:
+        return []
+
+    belief_map = {b.id: b for b in beliefs}
+    id_set = set(belief_map.keys())
+
+    # Build in-degree counts and adjacency (upstream -> downstream)
+    in_degree: dict[str, int] = {b.id: 0 for b in beliefs}
+    downstream: dict[str, list[str]] = {b.id: [] for b in beliefs}
+
+    for b in beliefs:
+        for dep_id in b.depends_on:
+            if dep_id in id_set:
+                in_degree[b.id] += 1
+                downstream[dep_id].append(b.id)
+
+    # Kahn's algorithm
+    queue = [bid for bid, deg in in_degree.items() if deg == 0]
+    result: list[str] = []
+
+    while queue:
+        node = queue.pop(0)
+        result.append(node)
+        for child in downstream[node]:
+            in_degree[child] -= 1
+            if in_degree[child] == 0:
+                queue.append(child)
+
+    # Handle cycles: any nodes not yet in result have unresolved dependencies
+    remaining = [bid for bid in belief_map if bid not in set(result)]
+    if remaining:
+        logger.warning(
+            "Cycle detected during topological sort — breaking back-edges for: %s",
+            ", ".join(remaining),
+        )
+        result.extend(remaining)
+
+    return [belief_map[bid] for bid in result]
+
+
 def cascade_falsify(
     beliefs: list[Belief],
     falsified_id: str,

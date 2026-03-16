@@ -5,6 +5,7 @@ from __future__ import annotations
 from epistemic_agents.providers.base import BaseProvider
 from epistemic_agents import client
 from epistemic_agents.client import get_last_usage
+from epistemic_agents.schema import PanelResponse
 
 
 class ClaudeProvider(BaseProvider):
@@ -20,6 +21,20 @@ class ClaudeProvider(BaseProvider):
             model=self.model_id,
             system=system_prompt,
             user_message=task,
+        )
+        self._last_usage = get_last_usage()
+        return result
+
+    @property
+    def supports_structured_output(self) -> bool:
+        return True
+
+    def structured_analyze(self, task: str, system_prompt: str) -> PanelResponse:
+        result = client.structured_request(
+            model=self.model_id,
+            system=system_prompt,
+            user_message=task,
+            response_model=PanelResponse,
         )
         self._last_usage = get_last_usage()
         return result

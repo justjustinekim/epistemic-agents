@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import math
+
 from epistemic_agents.confidence import aggregate_confidence
 from epistemic_agents.rag import _tokenize, _jaccard_similarity
 from epistemic_agents.schema import (
     AgreementPoint,
+    Belief,
     ConfidenceLevel,
     ProviderPosition,
     TensionPoint,
@@ -151,3 +154,95 @@ def detect_tensions(
             ))
 
     return tensions
+
+
+def majority_vote(
+    positions: list[ProviderPosition],
+    n_eff: float,
+    similarity_threshold: float = 0.4,
+) -> tuple[list[AgreementPoint], list[Belief]]:
+    """Split beliefs into locked agreements and contested beliefs.
+
+    An agreement is "locked" when supporting providers >= ceil(n_eff).
+    Latent disagreement check: if providers agree on claim but have divergent
+    reasoning_basis values, the belief stays contested.
+
+    Returns:
+        (locked_agreements, contested_beliefs)
+    """
+    agreements = detect_agreements(positions, similarity_threshold=similarity_threshold)
+    threshold = math.ceil(n_eff)
+
+    locked: list[AgreementPoint] = []
+    contested_beliefs: list[Belief] = []
+
+    # Collect all beliefs for quick lookup
+    all_beliefs: dict[str, list[Belief]] = {}  # provider -> beliefs
+    for pos in positions:
+        all_beliefs[pos.provider_name] = pos.beliefs
+
+    agreed_belief_ids: set[str] = set()
+
+    for ag in agreements:
+        if len(ag.supporting_providers) >= threshold:
+            # Check for latent disagreement via reasoning_basis
+            has_latent_disagreement = _check_latent_disagreement(
+                ag, all_beliefs, similarity_threshold
+            )
+            if has_latent_disagreement:
+                # Stay contested despite agreement count
+                for ref in ag.source_refs:
+                    prov, bid = ref.split(":", 1)
+                    for b in all_beliefs.get(prov, []):
+                        if b.id == bid:
+                            contested_beliefs.append(b)
+                            agreed_belief_ids.add(f"{prov}:{bid}")
+            else:
+                locked.append(ag)
+                for ref in ag.source_refs:
+                    agreed_belief_ids.add(ref)
+        else:
+            # Not enough support → contested
+            for ref in ag.source_refs:
+                prov, bid = ref.split(":", 1)
+                for b in all_beliefs.get(prov, []):
+                    if b.id == bid and f"{prov}:{bid}" not in agreed_belief_ids:
+                        contested_beliefs.append(b)
+                        agreed_belief_ids.add(f"{prov}:{bid}")
+
+    # Add beliefs not in any agreement cluster as contested
+    for pos in positions:
+        for b in pos.beliefs:
+            ref = f"{pos.provider_name}:{b.id}"
+            if ref not in agreed_belief_ids:
+                contested_beliefs.append(b)
+
+    return locked, contested_beliefs
+
+
+def _check_latent_disagreement(
+    agreement: AgreementPoint,
+    all_beliefs: dict[str, list[Belief]],
+    similarity_threshold: float,
+) -> bool:
+    """Check if providers agree on claim but have divergent reasoning_basis."""
+    bases: list[str] = []
+    for ref in agreement.source_refs:
+        prov, bid = ref.split(":", 1)
+        for b in all_beliefs.get(prov, []):
+            if b.id == bid and b.reasoning_basis:
+                bases.append(b.reasoning_basis)
+
+    if len(bases) < 2:
+        return False
+
+    # Check pairwise similarity of reasoning bases
+    for i in range(len(bases)):
+        tokens_i = _tokenize(bases[i])
+        for j in range(i + 1, len(bases)):
+            tokens_j = _tokenize(bases[j])
+            sim = _jaccard_similarity(tokens_i, tokens_j)
+            if sim < similarity_threshold:
+                return True  # Divergent reasoning
+
+    return False

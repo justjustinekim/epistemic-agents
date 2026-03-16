@@ -1,6 +1,6 @@
 """Tests for Belief Importance Scoring and cascade falsification."""
 
-from epistemic_agents.bis import cascade_falsify, detect_cycles, importance_scores, rank_beliefs
+from epistemic_agents.bis import cascade_falsify, detect_cycles, importance_scores, rank_beliefs, topological_sort
 from epistemic_agents.schema import Belief, ConfidenceLevel
 
 
@@ -218,3 +218,67 @@ def test_weighted_scoring_with_numeric_confidence():
     scores = importance_scores([b_parent, b_child_high])
     # Parent gets weighted by child's effective score (0.95)
     assert scores["parent"] > scores["child"]
+
+
+# ---------------------------------------------------------------------------
+# Topological sort tests
+# ---------------------------------------------------------------------------
+
+
+def test_topological_sort_linear_chain():
+    """Linear chain: b1 <- b2 <- b3 should sort as [b1, b2, b3]."""
+    beliefs = [
+        Belief(id="b3", claim="C", confidence=ConfidenceLevel.LOW, justification="Z", depends_on=["b2"]),
+        Belief(id="b1", claim="A", confidence=ConfidenceLevel.HIGH, justification="X"),
+        Belief(id="b2", claim="B", confidence=ConfidenceLevel.MODERATE, justification="Y", depends_on=["b1"]),
+    ]
+    sorted_beliefs = topological_sort(beliefs)
+    ids = [b.id for b in sorted_beliefs]
+    assert ids.index("b1") < ids.index("b2") < ids.index("b3")
+
+
+def test_topological_sort_diamond_dag():
+    """Diamond: b1 <- b2, b1 <- b3, b2 <- b4, b3 <- b4."""
+    beliefs = [
+        Belief(id="b4", claim="D", confidence=ConfidenceLevel.LOW, justification="Z", depends_on=["b2", "b3"]),
+        Belief(id="b2", claim="B", confidence=ConfidenceLevel.MODERATE, justification="Y", depends_on=["b1"]),
+        Belief(id="b3", claim="C", confidence=ConfidenceLevel.MODERATE, justification="Y", depends_on=["b1"]),
+        Belief(id="b1", claim="A", confidence=ConfidenceLevel.HIGH, justification="X"),
+    ]
+    sorted_beliefs = topological_sort(beliefs)
+    ids = [b.id for b in sorted_beliefs]
+    assert ids[0] == "b1"
+    assert ids[-1] == "b4"
+    assert ids.index("b2") < ids.index("b4")
+    assert ids.index("b3") < ids.index("b4")
+
+
+def test_topological_sort_cycles_graceful():
+    """Cycles should be handled gracefully (broken, all beliefs still present)."""
+    beliefs = [
+        Belief(id="a", claim="A", confidence=ConfidenceLevel.HIGH, justification="X", depends_on=["b"]),
+        Belief(id="b", claim="B", confidence=ConfidenceLevel.HIGH, justification="Y", depends_on=["a"]),
+        Belief(id="c", claim="C", confidence=ConfidenceLevel.LOW, justification="Z"),
+    ]
+    sorted_beliefs = topological_sort(beliefs)
+    assert len(sorted_beliefs) == 3
+    ids = [b.id for b in sorted_beliefs]
+    assert set(ids) == {"a", "b", "c"}
+    # c has no deps, should come first
+    assert ids[0] == "c"
+
+
+def test_topological_sort_no_deps():
+    """All independent beliefs should appear in result (any order)."""
+    beliefs = [
+        Belief(id="b1", claim="A", confidence=ConfidenceLevel.HIGH, justification="X"),
+        Belief(id="b2", claim="B", confidence=ConfidenceLevel.LOW, justification="Y"),
+        Belief(id="b3", claim="C", confidence=ConfidenceLevel.MODERATE, justification="Z"),
+    ]
+    sorted_beliefs = topological_sort(beliefs)
+    assert len(sorted_beliefs) == 3
+
+
+def test_topological_sort_empty():
+    """Empty list should return empty."""
+    assert topological_sort([]) == []

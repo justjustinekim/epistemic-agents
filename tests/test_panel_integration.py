@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from tests.conftest import FakeProvider
+from conftest import FakeProvider
 from epistemic_agents.panel import ModelPanel
 from epistemic_agents.schema import (
     AgreementPoint,

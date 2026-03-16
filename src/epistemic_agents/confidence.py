@@ -42,3 +42,27 @@ def aggregate_beliefs_confidence(beliefs: list[Belief]) -> float:
         return 0.5
     scores = [b.effective_score for b in beliefs]
     return aggregate_confidence(scores)
+
+
+def extremize(p: float, d: float = 1.0) -> float:
+    """Extremize a probability. d=1.0 is identity. d>1 pushes toward 0/1."""
+    p = max(0.01, min(0.99, p))
+    if d == 1.0:
+        return p
+    numerator = p ** d
+    denominator = numerator + (1 - p) ** d
+    return numerator / denominator
+
+
+def aggregate_confidence_extremized(
+    scores: list[float],
+    n_eff: float | None = None,
+) -> float:
+    """Log-odds aggregate then extremize. d = 1.0 + 0.1*(n_eff-1), capped at 1.5."""
+    if not scores:
+        return 0.5
+    base = aggregate_confidence(scores)
+    if n_eff is None or n_eff <= 1.0:
+        return base
+    d = min(1.5, 1.0 + 0.1 * (n_eff - 1))
+    return extremize(base, d)

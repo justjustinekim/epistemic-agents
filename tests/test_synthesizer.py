@@ -118,6 +118,42 @@ def test_programmatic_detection_injected(mock_client):
 
 
 @patch("epistemic_agents.synthesizer.client")
+def test_synthesize_n_samples_picks_longest(mock_client):
+    """Test that n_samples>1 picks the synthesis with longest strategy."""
+    short = _synthesis()
+    short.synthesized_strategy = "Short"
+    long = _synthesis()
+    long.synthesized_strategy = "This is a much longer and more comprehensive strategy"
+    mock_client.structured_request.side_effect = [short, long, short]
+
+    synth = Synthesizer(model="opus")
+    result = synth._run_synthesis("Test task", "msg", _positions(), n_samples=3)
+    assert result.synthesized_strategy == long.synthesized_strategy
+    assert mock_client.structured_request.call_count == 3
+
+
+@patch("epistemic_agents.synthesizer.client")
+def test_synthesize_single_sample(mock_client):
+    """Test that n_samples=1 calls structured_request exactly once."""
+    mock_client.structured_request.return_value = _synthesis()
+
+    synth = Synthesizer(model="opus")
+    result = synth._run_synthesis("Test task", "msg", _positions(), n_samples=1)
+    assert mock_client.structured_request.call_count == 1
+
+
+@patch("epistemic_agents.synthesizer.client")
+def test_synthesize_debate_default_n_samples(mock_client):
+    """Test that synthesize_debate uses n_samples=1 by default."""
+    mock_client.structured_request.return_value = _synthesis()
+
+    synth = Synthesizer(model="opus")
+    rounds = [_positions()]
+    result = synth.synthesize_debate("Test task", rounds)
+    assert mock_client.structured_request.call_count == 1
+
+
+@patch("epistemic_agents.synthesizer.client")
 def test_synthesis_without_beliefs(mock_client):
     """Test synthesis works fine when no beliefs are populated."""
     mock_client.structured_request.return_value = _synthesis()

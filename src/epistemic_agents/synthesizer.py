@@ -180,6 +180,7 @@ class Synthesizer:
         user_message: str,
         positions: list[ProviderPosition],
         system: str = SYNTHESIS_SYSTEM_PROMPT,
+        n_samples: int = 1,
     ) -> PanelSynthesis:
         # Inject programmatic agreement/tension detection if beliefs are populated
         has_beliefs = any(pos.beliefs for pos in positions)
@@ -213,11 +214,25 @@ class Synthesizer:
             except Exception:
                 pass  # Graceful degradation
 
-        synthesis = client.structured_request(
-            model=self.model,
-            system=system,
-            user_message=user_message,
-            response_model=PanelSynthesis,
-        )
-        synthesis.provider_positions = positions
+        if n_samples > 1:
+            candidates = []
+            for _ in range(n_samples):
+                s = client.structured_request(
+                    model=self.model,
+                    system=system,
+                    user_message=user_message,
+                    response_model=PanelSynthesis,
+                )
+                s.provider_positions = positions
+                candidates.append(s)
+            # Pick best by strategy length as proxy for comprehensiveness
+            synthesis = max(candidates, key=lambda s: len(s.synthesized_strategy))
+        else:
+            synthesis = client.structured_request(
+                model=self.model,
+                system=system,
+                user_message=user_message,
+                response_model=PanelSynthesis,
+            )
+            synthesis.provider_positions = positions
         return synthesis

@@ -8,6 +8,7 @@ import urllib.error
 
 from epistemic_agents.client import CallUsage, compute_cost
 from epistemic_agents.providers.base import BaseProvider
+from epistemic_agents.schema import PanelResponse
 
 
 class OpenAICompatProvider(BaseProvider):
@@ -175,6 +176,67 @@ class OpenAICompatProvider(BaseProvider):
         )
 
         return "".join(content_parts)
+
+    @property
+    def supports_structured_output(self) -> bool:
+        # GPT supports structured output; reasoning models and others do not
+        return self.name == "gpt"
+
+    def structured_analyze(self, task: str, system_prompt: str) -> PanelResponse:
+        """Structured output via OpenAI JSON mode for GPT models."""
+        if not self.supports_structured_output:
+            raise NotImplementedError(f"{self.name} does not support structured output")
+
+        url = f"{self._base_url}/chat/completions"
+        schema = PanelResponse.model_json_schema()
+
+        augmented_task = (
+            f"{task}\n\n---\n"
+            f"IMPORTANT: Respond with ONLY valid JSON matching this schema — "
+            f"no markdown, no code fences:\n"
+            f"{json.dumps(schema, indent=2)}"
+        )
+
+        payload = {
+            "model": self.model_id,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": augmented_task},
+            ],
+            "temperature": 0.7,
+            "response_format": {"type": "json_object"},
+        }
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self._api_key}",
+                "User-Agent": "epistemic-agents/0.1",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                body = json.loads(resp.read().decode())
+                usage = body.get("usage", {})
+                input_tokens = usage.get("prompt_tokens", 0)
+                output_tokens = usage.get("completion_tokens", 0)
+                cost = compute_cost(self.model_id, input_tokens, output_tokens)
+                self._last_usage = CallUsage(
+                    model=self.model_id,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=cost,
+                )
+                content = body["choices"][0]["message"]["content"]
+                return PanelResponse.model_validate_json(content)
+        except (urllib.error.HTTPError, urllib.error.URLError):
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Structured output failed for {self.name}: {e}") from e
 
     @property
     def available(self) -> bool:

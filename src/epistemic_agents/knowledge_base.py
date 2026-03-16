@@ -65,8 +65,29 @@ class KnowledgeBase:
         query: str,
         top_k: int = 5,
         min_similarity: float = 0.1,
+        use_embeddings: bool = False,
     ) -> list[KnowledgeEntry]:
         """Search for relevant knowledge entries by query similarity."""
+        if use_embeddings:
+            try:
+                from sentence_transformers import SentenceTransformer
+                model = SentenceTransformer("all-MiniLM-L6-v2")
+                query_emb = model.encode([query])
+                texts = [e.belief.claim + " " + e.task_origin for e in self._entries]
+                if texts:
+                    import numpy as np
+                    entry_embs = model.encode(texts)
+                    sims = np.dot(entry_embs, query_emb.T).flatten()
+                    indices = sims.argsort()[::-1][:top_k]
+                    results = [self._entries[i] for i in indices if sims[i] >= min_similarity]
+                    for entry in results:
+                        entry.usage_count += 1
+                    if results:
+                        self._save()
+                    return results
+            except ImportError:
+                pass  # Fall back to Jaccard
+
         query_tokens = _tokenize(query)
         scored: list[tuple[float, KnowledgeEntry]] = []
 
