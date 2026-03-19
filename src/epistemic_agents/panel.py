@@ -48,6 +48,55 @@ Your job:
 Do NOT repeat your original analysis. Respond to the SPECIFIC claims other models made. \
 Reference them by name. This is a conversation, not parallel monologues."""
 
+# C16: Adversarial persona lenses injected into debate rounds to decorrelate reasoning.
+# Each provider gets a different lens per round, rotating through all lenses.
+DEBATE_PERSONAS: list[str] = [
+    (
+        "LENS: You are the Empiricist. Demand concrete evidence for every claim. "
+        "Reject arguments from authority or analogy unless backed by data. "
+        "Ask: what experiment or observation would settle this?"
+    ),
+    (
+        "LENS: You are the Systems Thinker. Focus on second-order effects, feedback loops, "
+        "and emergent behavior. What interactions between components does everyone else ignore? "
+        "Where do local optima create global failures?"
+    ),
+    (
+        "LENS: You are the Historian. What precedents exist for this situation? "
+        "Where have similar approaches succeeded or failed before? "
+        "Challenge novelty claims — most 'new' problems have old solutions."
+    ),
+    (
+        "LENS: You are the Adversary. Assume the current consensus is wrong and construct "
+        "the strongest possible case against it. What would a smart critic say? "
+        "Find the weakest link in the argument chain."
+    ),
+    (
+        "LENS: You are the Pragmatist. Cut through theoretical elegance — what actually works? "
+        "What are the real-world constraints everyone is ignoring? "
+        "Simplify: what's the minimum viable approach?"
+    ),
+    (
+        "LENS: You are the Edge Case Hunter. Find the scenarios where the consensus breaks down. "
+        "What boundary conditions haven't been tested? Where does the model fail gracefully "
+        "vs catastrophically?"
+    ),
+    (
+        "LENS: You are the Bayesian Updater. What's the prior probability of each claim? "
+        "How much should the evidence presented actually shift our beliefs? "
+        "Flag where confidence exceeds what the evidence supports."
+    ),
+]
+
+
+def _get_persona_for_round(provider_index: int, round_num: int) -> str:
+    """Return a persona lens for a provider in a given round, rotating to avoid repeats."""
+    n = len(DEBATE_PERSONAS)
+    # Rotate: each round shifts the assignment so no provider gets the same lens twice
+    idx = (provider_index + round_num - 2) % n
+    return DEBATE_PERSONAS[idx]
+
+
 REFUTATION_SYSTEM_PROMPT = """\
 You are reviewing a synthesis produced by a separate AI after a multi-model debate \
 you participated in. The synthesizer claims to have distilled your debate into \
@@ -89,7 +138,9 @@ class ModelPanel:
         self._extraction_model = extraction_model
         self.pairwise_tracker = pairwise_tracker or PairwiseTracker()
 
-    def run(self, task: str, system_prompt: str | None = None) -> list[ProviderPosition]:
+    def run(
+        self, task: str, system_prompt: str | None = None
+    ) -> list[ProviderPosition]:
         """Query all providers in parallel and return their positions."""
         prompt = system_prompt or PANEL_SYSTEM_PROMPT
         return self._parallel_query(task, prompt)
@@ -131,6 +182,7 @@ class ModelPanel:
         self._contested_beliefs = []
         try:
             from epistemic_agents.agreement_detector import majority_vote
+
             n_eff = self.pairwise_tracker.n_eff(len(self.providers))
             locked, contested = majority_vote(positions, n_eff)
             self._locked_agreements = locked
@@ -146,22 +198,29 @@ class ModelPanel:
             # Detect sycophancy from previous rounds
             if len(all_rounds) >= 2:
                 try:
-                    from epistemic_agents.position_tracker import track_positions, detect_sycophancy
+                    from epistemic_agents.position_tracker import (
+                        track_positions,
+                        detect_sycophancy,
+                    )
+
                     shifts = track_positions(all_rounds)
                     shifts = detect_sycophancy(shifts, all_rounds)
-                    sycophantic_providers = {s.provider_name for s in shifts if s.is_sycophantic}
+                    sycophantic_providers = {
+                        s.provider_name for s in shifts if s.is_sycophantic
+                    }
                 except Exception:
                     pass
 
             # Use targeted prompting if beliefs are populated
             has_beliefs = any(
-                pos.beliefs
-                for round_positions in all_rounds
-                for pos in round_positions
+                pos.beliefs for round_positions in all_rounds for pos in round_positions
             )
             if has_beliefs:
                 positions = self._targeted_parallel_query(
-                    task, all_rounds, sycophantic_providers=sycophantic_providers,
+                    task,
+                    all_rounds,
+                    sycophantic_providers=sycophantic_providers,
+                    round_num=round_num,
                 )
             else:
                 debate_prompt = self._build_debate_context(task, all_rounds)
@@ -189,35 +248,36 @@ class ModelPanel:
         # Include debate transcript
         for round_num, positions in enumerate(rounds, 1):
             label = (
-                "Initial Analysis" if round_num == 1 else f"Debate Round {round_num - 1}"
+                "Initial Analysis"
+                if round_num == 1
+                else f"Debate Round {round_num - 1}"
             )
             sections.append(f"---\n# {label}\n")
             for pos in positions:
                 sections.append(
-                    f"## {pos.provider_name} ({pos.model_id}):\n"
-                    f"{pos.raw_analysis}\n"
+                    f"## {pos.provider_name} ({pos.model_id}):\n{pos.raw_analysis}\n"
                 )
 
         # Include the synthesis
         sections.append("---\n# SYNTHESIZER'S OUTPUT\n")
-        sections.append(f"## Agreements\n")
+        sections.append("## Agreements\n")
         for ag in synthesis.agreements:
             sections.append(
                 f"- [{ag.combined_confidence.value}] {ag.claim} "
                 f"(by: {', '.join(ag.supporting_providers)})\n"
             )
-        sections.append(f"\n## Tensions\n")
+        sections.append("\n## Tensions\n")
         for t in synthesis.tensions:
             sections.append(f"- {t.claim}\n")
             for prov, stance in t.positions.items():
                 sections.append(f"  {prov}: {stance}\n")
             sections.append(f"  Synthesis: {t.synthesis_notes}\n")
-        sections.append(f"\n## Blind Spots\n")
+        sections.append("\n## Blind Spots\n")
         for bs in synthesis.blind_spots:
-            sections.append(
-                f"- {bs.observation} (caught by {bs.identified_by})\n"
-            )
-        sections.append(f"\n## Synthesized Strategy\n{synthesis.synthesized_strategy}\n")
+            sections.append(f"- {bs.observation} (caught by {bs.identified_by})\n")
+        sections.append(
+            f"\n## Synthesized Strategy\n{synthesis.synthesized_strategy}\n"
+        )
         sections.append(f"\n## Meta-Confidence\n{synthesis.meta_confidence}\n")
 
         sections.append(
@@ -263,9 +323,7 @@ class ModelPanel:
                             file=sys.stderr,
                         )
             except TimeoutError:
-                timed_out = [
-                    p.name for f, p in futures.items() if not f.done()
-                ]
+                timed_out = [p.name for f, p in futures.items() if not f.done()]
                 print(
                     f"[panel] Timed out waiting for providers: {', '.join(timed_out)}",
                     file=sys.stderr,
@@ -287,17 +345,26 @@ class ModelPanel:
         task: str,
         all_rounds: list[list[ProviderPosition]],
         sycophantic_providers: set[str] | None = None,
+        round_num: int = 2,
     ) -> list[ProviderPosition]:
-        """Query each provider with a targeted prompt specific to them."""
+        """Query each provider with a targeted prompt specific to them.
+
+        C16: Each provider gets a rotating adversarial persona lens to
+        decorrelate reasoning paths across the panel.
+        """
         positions: list[ProviderPosition] = []
         sycophantic_providers = sycophantic_providers or set()
 
         with ThreadPoolExecutor(max_workers=len(self.providers)) as pool:
             futures = {}
-            for provider in self.providers:
+            for i, provider in enumerate(self.providers):
                 targeted_prompt = self._build_targeted_debate_context(
                     task, all_rounds, provider.name
                 )
+                # C16: Inject rotating persona lens
+                persona = _get_persona_for_round(i, round_num)
+                system_prompt = f"{persona}\n\n{DEBATE_SYSTEM_PROMPT}"
+
                 # Inject anti-sycophancy warning for flagged providers
                 if provider.name in sycophantic_providers:
                     targeted_prompt += (
@@ -306,14 +373,16 @@ class ModelPanel:
                         "Any position change MUST include a NEW argument not "
                         "previously stated by any participant."
                     )
-                futures[pool.submit(
-                    self._query_provider,
-                    provider,
-                    targeted_prompt,
-                    DEBATE_SYSTEM_PROMPT,
-                    self._extract_beliefs,
-                    self._extraction_model,
-                )] = provider
+                futures[
+                    pool.submit(
+                        self._query_provider,
+                        provider,
+                        targeted_prompt,
+                        system_prompt,
+                        self._extract_beliefs,
+                        self._extraction_model,
+                    )
+                ] = provider
 
             try:
                 for future in as_completed(futures, timeout=_PROVIDER_TIMEOUT):
@@ -327,9 +396,7 @@ class ModelPanel:
                             file=sys.stderr,
                         )
             except TimeoutError:
-                timed_out = [
-                    p.name for f, p in futures.items() if not f.done()
-                ]
+                timed_out = [p.name for f, p in futures.items() if not f.done()]
                 print(
                     f"[panel] Timed out waiting for providers: {', '.join(timed_out)}",
                     file=sys.stderr,
@@ -350,7 +417,6 @@ class ModelPanel:
 
         For rounds 2+, uses state deltas instead of full text for efficiency.
         """
-        from epistemic_agents.rag import _tokenize, _jaccard_similarity
 
         sections = [f"# Original Task\n{task}\n"]
 
@@ -372,13 +438,12 @@ class ModelPanel:
 
         # Use state deltas for rounds 2+ when beliefs are available
         has_beliefs = any(
-            pos.beliefs
-            for round_positions in all_rounds
-            for pos in round_positions
+            pos.beliefs for round_positions in all_rounds for pos in round_positions
         )
         if has_beliefs and len(all_rounds) >= 2:
             try:
                 from epistemic_agents.position_tracker import compute_deltas
+
                 deltas = compute_deltas(all_rounds)
                 if deltas:
                     sections.append(f"---\n# STATE CHANGES:\n{deltas}\n")
@@ -387,7 +452,9 @@ class ModelPanel:
 
         # Find counterarguments from other models (use latest round only for efficiency)
         latest_round = all_rounds[-1] if all_rounds else []
-        other_latest = [pos for pos in latest_round if pos.provider_name != target_provider]
+        other_latest = [
+            pos for pos in latest_round if pos.provider_name != target_provider
+        ]
 
         sections.append("---\n# OTHER MODELS' LATEST POSITIONS:\n")
         for pos in other_latest:
@@ -413,12 +480,15 @@ class ModelPanel:
         sections = [f"# Original Task\n{task}\n"]
 
         for round_num, positions in enumerate(all_rounds, 1):
-            label = "Initial Analysis" if round_num == 1 else f"Response Round {round_num - 1}"
+            label = (
+                "Initial Analysis"
+                if round_num == 1
+                else f"Response Round {round_num - 1}"
+            )
             sections.append(f"---\n# {label}\n")
             for pos in positions:
                 sections.append(
-                    f"## {pos.provider_name} ({pos.model_id}):\n"
-                    f"{pos.raw_analysis}\n"
+                    f"## {pos.provider_name} ({pos.model_id}):\n{pos.raw_analysis}\n"
                 )
 
         sections.append(
@@ -459,7 +529,10 @@ class ModelPanel:
 
         if extract_beliefs:
             try:
-                from epistemic_agents.belief_extractor import extract_beliefs as _extract
+                from epistemic_agents.belief_extractor import (
+                    extract_beliefs as _extract,
+                )
+
                 beliefs = _extract(raw, provider.name, model=extraction_model)
             except Exception as exc:
                 print(

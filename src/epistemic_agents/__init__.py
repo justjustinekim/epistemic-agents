@@ -71,6 +71,7 @@ from epistemic_agents.memory import EpistemicMemory, MemoryResult
 from epistemic_agents.auto_verify import classify_verifiable, auto_verify, verify_factual, verify_technical
 from epistemic_agents.consensus_audit import ConsensusAuditReport, ConsensusResult, run_consensus_audit
 from epistemic_agents.empirical_eval import EvalResult, EvalComparison, EvalReport, run_empirical_eval
+from epistemic_agents.vulnerability import vulnerability_score, score_beliefs, rank_by_vulnerability
 
 __all__ = [
     # Core epistemic protocol
@@ -209,4 +210,8 @@ __all__ = [
     "EvalComparison",
     "EvalReport",
     "run_empirical_eval",
+    # Vulnerability scoring
+    "vulnerability_score",
+    "score_beliefs",
+    "rank_by_vulnerability",
 ]
