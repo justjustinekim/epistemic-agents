@@ -68,8 +68,9 @@ from epistemic_agents.calibration_games import (
 )
 from epistemic_agents.ledger import classify_domain
 from epistemic_agents.memory import EpistemicMemory, MemoryResult
-from epistemic_agents.auto_verify import classify_verifiable, auto_verify
+from epistemic_agents.auto_verify import classify_verifiable, auto_verify, verify_factual, verify_technical
 from epistemic_agents.consensus_audit import ConsensusAuditReport, ConsensusResult, run_consensus_audit
+from epistemic_agents.empirical_eval import EvalResult, EvalComparison, EvalReport, run_empirical_eval
 
 __all__ = [
     # Core epistemic protocol
@@ -162,6 +163,8 @@ __all__ = [
     "StanceShift",
     "track_positions",
     "format_position_summary",
+    "detect_sycophancy",
+    "compute_deltas",
     # Context management
     "estimate_tokens",
     "manage_context",
@@ -198,4 +201,12 @@ __all__ = [
     "ConsensusAuditReport",
     "ConsensusResult",
     "run_consensus_audit",
+    # Auto-verify (full)
+    "verify_factual",
+    "verify_technical",
+    # Empirical eval
+    "EvalResult",
+    "EvalComparison",
+    "EvalReport",
+    "run_empirical_eval",
 ]
