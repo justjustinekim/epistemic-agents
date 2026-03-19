@@ -26,6 +26,10 @@ Instructions:
    The debate should have sharpened where the real cruxes are.
 6. **Meta-Confidence** — How confident are you in the synthesis? Where is it weakest? \
    Did the debate resolve key uncertainties or expose new ones?
+8. **Predicted Error Rate** — Estimate the probability (0.0-1.0) that ANY of your \
+   locked agreements above is actually wrong. Consider: how nuanced was the topic, \
+   how correlated were the models' reasoning, and how strong was the minority dissent. \
+   Be honest — overconfidence here defeats the purpose.
 7. **Source Traceability** — When citing agreements, tensions, or insights, include \
    source_refs in the format "provider:belief_id" so claims can be traced back \
    to their origin.

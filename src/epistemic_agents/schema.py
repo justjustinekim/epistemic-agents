@@ -396,6 +396,15 @@ class PanelSynthesis(BaseModel):
     meta_confidence: str = Field(
         description="Overall confidence assessment and caveats"
     )
+    predicted_error_rate: float | None = Field(
+        default=None,
+        description="ISP meta-prediction: panel's estimate of P(any locked agreement is wrong). "
+        "Range [0.0, 1.0]. None if not computed.",
+    )
+    error_rate_reasoning: str | None = Field(
+        default=None,
+        description="Reasoning behind the predicted error rate.",
+    )
 
 
 # ---------------------------------------------------------------------------
