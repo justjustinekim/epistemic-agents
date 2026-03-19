@@ -1,8 +1,6 @@
 """Tests for vote-then-debate hybrid (Change 1) and majority_vote."""
 
-import math
-
-from epistemic_agents.agreement_detector import majority_vote, detect_agreements
+from epistemic_agents.agreement_detector import majority_vote
 from epistemic_agents.schema import Belief, ConfidenceLevel, ProviderPosition
 
 
@@ -15,7 +13,9 @@ def _pos(name: str, beliefs: list[Belief]) -> ProviderPosition:
     )
 
 
-def _belief(id: str, claim: str, score: float = 0.8, reasoning_basis: str | None = None) -> Belief:
+def _belief(
+    id: str, claim: str, score: float = 0.8, reasoning_basis: str | None = None
+) -> Belief:
     return Belief(
         id=id,
         claim=claim,
@@ -33,7 +33,7 @@ def test_majority_vote_locks_unanimous():
         _pos("gemini", [_belief("g1", "Redis improves latency", 0.85)]),
         _pos("grok", [_belief("k1", "Redis improves latency", 0.88)]),
     ]
-    locked, contested = majority_vote(positions, n_eff=3.0)
+    locked, contested = majority_vote(positions, n_eff=3.0, min_threshold=3)
     assert len(locked) >= 1
     assert locked[0].claim == "Redis improves latency"
 
@@ -51,13 +51,13 @@ def test_majority_vote_no_agreement():
 
 
 def test_majority_vote_partial_agreement():
-    """2 of 3 agree, n_eff=2 → should lock."""
+    """2 of 3 agree, n_eff=2 → should lock (with min_threshold matching small panel)."""
     positions = [
         _pos("claude", [_belief("c1", "Redis improves latency", 0.9)]),
         _pos("gemini", [_belief("g1", "Redis improves latency", 0.85)]),
         _pos("grok", [_belief("k1", "Memcached is better for caching", 0.8)]),
     ]
-    locked, contested = majority_vote(positions, n_eff=2.0)
+    locked, contested = majority_vote(positions, n_eff=2.0, min_threshold=2)
     assert len(locked) >= 1
 
 
@@ -76,14 +76,41 @@ def test_majority_vote_high_neff_requires_more():
 def test_majority_vote_latent_disagreement():
     """Providers agree on claim but diverge on reasoning → stays contested."""
     positions = [
-        _pos("claude", [_belief("c1", "Redis improves latency", 0.9,
-                                 reasoning_basis="p99 latency benchmarks from production")]),
-        _pos("gemini", [_belief("g1", "Redis improves latency", 0.85,
-                                 reasoning_basis="theoretical analysis of memory access patterns")]),
-        _pos("grok", [_belief("k1", "Redis improves latency", 0.88,
-                               reasoning_basis="comparison with filesystem based caching approaches")]),
+        _pos(
+            "claude",
+            [
+                _belief(
+                    "c1",
+                    "Redis improves latency",
+                    0.9,
+                    reasoning_basis="p99 latency benchmarks from production",
+                )
+            ],
+        ),
+        _pos(
+            "gemini",
+            [
+                _belief(
+                    "g1",
+                    "Redis improves latency",
+                    0.85,
+                    reasoning_basis="theoretical analysis of memory access patterns",
+                )
+            ],
+        ),
+        _pos(
+            "grok",
+            [
+                _belief(
+                    "k1",
+                    "Redis improves latency",
+                    0.88,
+                    reasoning_basis="comparison with filesystem based caching approaches",
+                )
+            ],
+        ),
     ]
-    locked, contested = majority_vote(positions, n_eff=2.0)
+    locked, contested = majority_vote(positions, n_eff=2.0, min_threshold=2)
     # With divergent reasoning bases, should stay contested
     # (depends on Jaccard threshold — these are very different bases)
 
@@ -111,23 +138,41 @@ def test_majority_vote_no_reasoning_basis_no_latent_check():
         _pos("claude", [_belief("c1", "Redis improves latency", 0.9)]),
         _pos("gemini", [_belief("g1", "Redis improves latency", 0.85)]),
     ]
-    locked, contested = majority_vote(positions, n_eff=2.0)
+    locked, contested = majority_vote(positions, n_eff=2.0, min_threshold=2)
     assert len(locked) >= 1
 
 
 def test_majority_vote_mixed_beliefs():
     """Some beliefs agreed, some contested."""
     positions = [
-        _pos("claude", [
-            _belief("c1", "Redis improves latency", 0.9),
-            _belief("c2", "GraphQL is better than REST", 0.7),
-        ]),
-        _pos("gemini", [
-            _belief("g1", "Redis improves latency", 0.85),
-            _belief("g2", "REST is simpler than GraphQL", 0.8),
-        ]),
+        _pos(
+            "claude",
+            [
+                _belief("c1", "Redis improves latency", 0.9),
+                _belief("c2", "GraphQL is better than REST", 0.7),
+            ],
+        ),
+        _pos(
+            "gemini",
+            [
+                _belief("g1", "Redis improves latency", 0.85),
+                _belief("g2", "REST is simpler than GraphQL", 0.8),
+            ],
+        ),
     ]
-    locked, contested = majority_vote(positions, n_eff=2.0)
+    locked, contested = majority_vote(positions, n_eff=2.0, min_threshold=2)
     # Redis should be agreed, GraphQL/REST should be contested
     locked_claims = {a.claim for a in locked}
     assert any("Redis" in c or "latency" in c for c in locked_claims)
+
+
+def test_majority_vote_default_min_threshold_requires_6():
+    """Default min_threshold=6 means small panels never lock (production safety)."""
+    positions = [
+        _pos("claude", [_belief("c1", "Redis improves latency", 0.9)]),
+        _pos("gemini", [_belief("g1", "Redis improves latency", 0.85)]),
+        _pos("grok", [_belief("k1", "Redis improves latency", 0.88)]),
+    ]
+    # Default min_threshold=6, only 3 providers → nothing locks
+    locked, contested = majority_vote(positions, n_eff=2.0)
+    assert len(locked) == 0

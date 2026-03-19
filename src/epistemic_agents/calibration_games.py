@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from epistemic_agents.schema import Belief, ConfidenceLevel
 
 if TYPE_CHECKING:
     from epistemic_agents.providers.base import BaseProvider
@@ -94,6 +93,67 @@ CALIBRATION_TASKS: list[CalibrationTask] = [
         category="databases",
         difficulty="medium",
     ),
+    # --- Hard/Expert tasks: genuinely contested or tricky claims ---
+    CalibrationTask(
+        question="Is consistent hashing guaranteed to produce a perfectly uniform distribution of keys across nodes?",
+        ground_truth=False,  # Only approximately uniform; requires virtual nodes for balance, and even then not perfectly uniform
+        category="distributed_systems",
+        difficulty="hard",
+    ),
+    CalibrationTask(
+        question="In Python, is 'is' comparison between two integers always equivalent to '==' for values in the range -5 to 256?",
+        ground_truth=True,  # CPython interns small integers [-5, 256], so 'is' works. But this is an implementation detail, not a language guarantee
+        category="languages",
+        difficulty="hard",
+    ),
+    CalibrationTask(
+        question="Is gradient descent guaranteed to converge to the global minimum for any convex function with a sufficiently small constant learning rate?",
+        ground_truth=True,  # For convex functions, GD with small enough LR converges to global min (standard convex optimization result)
+        category="ml",
+        difficulty="hard",
+    ),
+    CalibrationTask(
+        question="Does adding an index to a database column always improve query performance for queries filtering on that column?",
+        ground_truth=False,  # Indexes hurt on small tables, high-cardinality inserts, and queries returning large fractions of rows
+        category="databases",
+        difficulty="hard",
+    ),
+    CalibrationTask(
+        question="Is the amortized time complexity of appending to a Python list O(1)?",
+        ground_truth=True,  # Python lists use geometric over-allocation; amortized O(1) append
+        category="algorithms",
+        difficulty="hard",
+    ),
+    CalibrationTask(
+        question="Can a deadlock occur in a system that uses only a single shared mutex?",
+        ground_truth=False,  # Deadlock requires circular wait on >=2 resources (Coffman conditions)
+        category="architecture",
+        difficulty="expert",
+    ),
+    CalibrationTask(
+        question="Is it possible for a correctly-implemented TLS 1.3 connection to be vulnerable to a replay attack?",
+        ground_truth=True,  # 0-RTT early data in TLS 1.3 is explicitly vulnerable to replay; this is a known tradeoff
+        category="security",
+        difficulty="expert",
+    ),
+    CalibrationTask(
+        question="In a microservices architecture, does the Saga pattern guarantee that all services will eventually reach a consistent state after a failure?",
+        ground_truth=False,  # Saga provides eventual consistency only if all compensating transactions succeed; if a compensation fails, manual intervention is needed
+        category="architecture",
+        difficulty="expert",
+    ),
+    CalibrationTask(
+        question="Can a Bloom filter produce false negatives (reporting an element is not in the set when it actually is)?",
+        ground_truth=False,  # Bloom filters can produce false positives but never false negatives
+        category="algorithms",
+        difficulty="hard",
+    ),
+    CalibrationTask(
+        question="Is the output of a transformer model's self-attention layer invariant to the ordering of input tokens?",
+        ground_truth=True,  # Self-attention is permutation equivariant; without positional encoding, output is invariant to order
+        category="ml",
+        difficulty="expert",
+    ),
 ]
 
 
@@ -128,7 +188,9 @@ def run_calibration_game(
         List of results, one per provider.
     """
     if task_index >= len(CALIBRATION_TASKS):
-        raise ValueError(f"Task index {task_index} out of range (max {len(CALIBRATION_TASKS) - 1})")
+        raise ValueError(
+            f"Task index {task_index} out of range (max {len(CALIBRATION_TASKS) - 1})"
+        )
 
     task = CALIBRATION_TASKS[task_index]
     prompt = CALIBRATION_PROMPT.format(question=task.question)
@@ -144,13 +206,15 @@ def run_calibration_game(
             outcome = 1.0 if task.ground_truth else 0.0
             brier = (confidence - outcome) ** 2
 
-            results.append(CalibrationGameResult(
-                provider_name=provider.name,
-                task=task,
-                predicted_confidence=confidence,
-                correct=_check_correct(raw, task.ground_truth),
-                brier_score=brier,
-            ))
+            results.append(
+                CalibrationGameResult(
+                    provider_name=provider.name,
+                    task=task,
+                    predicted_confidence=confidence,
+                    correct=_check_correct(raw, task.ground_truth),
+                    brier_score=brier,
+                )
+            )
         except Exception:
             pass
 

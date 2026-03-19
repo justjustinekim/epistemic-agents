@@ -9,7 +9,6 @@ from epistemic_agents.rag import _tokenize, _jaccard_similarity
 from epistemic_agents.schema import (
     AgreementPoint,
     Belief,
-    ConfidenceLevel,
     ProviderPosition,
     TensionPoint,
     score_to_confidence_level,
@@ -26,15 +25,19 @@ def detect_agreements(
     Groups with 2+ providers become AgreementPoints.
     """
     # Collect all beliefs with their provider names
-    belief_entries: list[tuple[str, str, str, float]] = []  # (provider, belief_id, claim, score)
+    belief_entries: list[
+        tuple[str, str, str, float]
+    ] = []  # (provider, belief_id, claim, score)
     for pos in positions:
         for belief in pos.beliefs:
-            belief_entries.append((
-                pos.provider_name,
-                belief.id,
-                belief.claim,
-                belief.effective_score,
-            ))
+            belief_entries.append(
+                (
+                    pos.provider_name,
+                    belief.id,
+                    belief.claim,
+                    belief.effective_score,
+                )
+            )
 
     if not belief_entries:
         return []
@@ -73,8 +76,7 @@ def detect_agreements(
         providers = list({belief_entries[idx][0] for idx in cluster})
         scores = [belief_entries[idx][3] for idx in cluster]
         source_refs = [
-            f"{belief_entries[idx][0]}:{belief_entries[idx][1]}"
-            for idx in cluster
+            f"{belief_entries[idx][0]}:{belief_entries[idx][1]}" for idx in cluster
         ]
         combined_score = aggregate_confidence(scores)
         combined_level = score_to_confidence_level(combined_score)
@@ -82,13 +84,15 @@ def detect_agreements(
         # Use the first belief's claim as representative
         claim = belief_entries[cluster[0]][2]
 
-        agreements.append(AgreementPoint(
-            claim=claim,
-            supporting_providers=providers,
-            combined_confidence=combined_level,
-            source_refs=source_refs,
-            combined_confidence_score=combined_score,
-        ))
+        agreements.append(
+            AgreementPoint(
+                claim=claim,
+                supporting_providers=providers,
+                combined_confidence=combined_level,
+                source_refs=source_refs,
+                combined_confidence_score=combined_score,
+            )
+        )
 
     return agreements
 
@@ -107,12 +111,14 @@ def detect_tensions(
     belief_entries: list[tuple[str, str, str, float]] = []
     for pos in positions:
         for belief in pos.beliefs:
-            belief_entries.append((
-                pos.provider_name,
-                belief.id,
-                belief.claim,
-                belief.effective_score,
-            ))
+            belief_entries.append(
+                (
+                    pos.provider_name,
+                    belief.id,
+                    belief.claim,
+                    belief.effective_score,
+                )
+            )
 
     if not belief_entries:
         return []
@@ -140,18 +146,24 @@ def detect_tensions(
 
             seen_pairs.add((i, j))
 
-            tensions.append(TensionPoint(
-                claim=belief_entries[i][2],
-                positions={
-                    belief_entries[i][0]: f"[{belief_entries[i][3]:.2f}] {belief_entries[i][2]}",
-                    belief_entries[j][0]: f"[{belief_entries[j][3]:.2f}] {belief_entries[j][2]}",
-                },
-                synthesis_notes=f"Confidence gap of {gap:.2f} on similar topic (similarity: {sim:.2f})",
-                source_refs=[
-                    f"{belief_entries[i][0]}:{belief_entries[i][1]}",
-                    f"{belief_entries[j][0]}:{belief_entries[j][1]}",
-                ],
-            ))
+            tensions.append(
+                TensionPoint(
+                    claim=belief_entries[i][2],
+                    positions={
+                        belief_entries[i][
+                            0
+                        ]: f"[{belief_entries[i][3]:.2f}] {belief_entries[i][2]}",
+                        belief_entries[j][
+                            0
+                        ]: f"[{belief_entries[j][3]:.2f}] {belief_entries[j][2]}",
+                    },
+                    synthesis_notes=f"Confidence gap of {gap:.2f} on similar topic (similarity: {sim:.2f})",
+                    source_refs=[
+                        f"{belief_entries[i][0]}:{belief_entries[i][1]}",
+                        f"{belief_entries[j][0]}:{belief_entries[j][1]}",
+                    ],
+                )
+            )
 
     return tensions
 
@@ -160,10 +172,15 @@ def majority_vote(
     positions: list[ProviderPosition],
     n_eff: float,
     similarity_threshold: float = 0.4,
+    min_threshold: int = 6,
 ) -> tuple[list[AgreementPoint], list[Belief]]:
     """Split beliefs into locked agreements and contested beliefs.
 
-    An agreement is "locked" when supporting providers >= ceil(n_eff).
+    An agreement is "locked" when supporting providers >= max(ceil(n_eff), min_threshold).
+    The min_threshold default of 6 is derived from Phase 0 consensus audit data:
+    majority consensus (>=4) is wrong 25% of the time on hard questions, but
+    >=6 agreement has 0% error rate while still locking 65% of tasks.
+
     Latent disagreement check: if providers agree on claim but have divergent
     reasoning_basis values, the belief stays contested.
 
@@ -171,7 +188,7 @@ def majority_vote(
         (locked_agreements, contested_beliefs)
     """
     agreements = detect_agreements(positions, similarity_threshold=similarity_threshold)
-    threshold = math.ceil(n_eff)
+    threshold = max(math.ceil(n_eff), min_threshold)
 
     locked: list[AgreementPoint] = []
     contested_beliefs: list[Belief] = []

@@ -1,0 +1,1140 @@
+{
+  "n_providers": 7,
+  "n_tasks": 20,
+  "provider_accuracy": {
+    "claude": 0.85,
+    "gemini": 0.55,
+    "grok": 0.85,
+    "deepseek": 0.85,
+    "qwq": 0.7,
+    "gpt": 0.85,
+    "perplexity": 0.8
+  },
+  "provider_brier": {
+    "claude": 0.37,
+    "gemini": 0.37,
+    "grok": 0.37,
+    "deepseek": 0.354,
+    "qwq": 0.37,
+    "gpt": 0.37,
+    "perplexity": 0.37
+  },
+  "threshold_stats": {
+    "2": {
+      "correct": 15,
+      "total_locked": 20,
+      "accuracy": 0.75
+    },
+    "3": {
+      "correct": 15,
+      "total_locked": 20,
+      "accuracy": 0.75
+    },
+    "4": {
+      "correct": 15,
+      "total_locked": 20,
+      "accuracy": 0.75
+    },
+    "5": {
+      "correct": 14,
+      "total_locked": 17,
+      "accuracy": 0.8235294117647058
+    },
+    "6": {
+      "correct": 13,
+      "total_locked": 13,
+      "accuracy": 1.0
+    },
+    "7": {
+      "correct": 10,
+      "total_locked": 10,
+      "accuracy": 1.0
+    }
+  },
+  "majority_error_rate": 0.25,
+  "unanimous_error_rate": 0.0,
+  "optimal_threshold": 6,
+  "per_task": [
+    {
+      "question": "Is the time complexity of binary search O(log n)?",
+      "ground_truth": true,
+      "category": "algorithms",
+      "difficulty": "easy",
+      "majority_answer": true,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "Is Python's built-in sort algorithm Timsort, which is stable?",
+      "ground_truth": true,
+      "category": "languages",
+      "difficulty": "easy",
+      "majority_answer": true,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "Does TCP use a 3-way handshake for connection establishment?",
+      "ground_truth": true,
+      "category": "networking",
+      "difficulty": "easy",
+      "majority_answer": true,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "Is the space complexity of merge sort O(1)?",
+      "ground_truth": false,
+      "category": "algorithms",
+      "difficulty": "medium",
+      "majority_answer": false,
+      "majority_correct": true,
+      "agreement_count": 6,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        }
+      ]
+    },
+    {
+      "question": "Can a SQL query with a LEFT JOIN return more rows than the left table?",
+      "ground_truth": true,
+      "category": "databases",
+      "difficulty": "medium",
+      "majority_answer": true,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "Is JavaScript single-threaded in all runtime environments?",
+      "ground_truth": false,
+      "category": "languages",
+      "difficulty": "medium",
+      "majority_answer": false,
+      "majority_correct": true,
+      "agreement_count": 5,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        }
+      ]
+    },
+    {
+      "question": "Does HTTPS prevent man-in-the-middle attacks in all cases?",
+      "ground_truth": false,
+      "category": "security",
+      "difficulty": "hard",
+      "majority_answer": false,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        }
+      ]
+    },
+    {
+      "question": "Is the CAP theorem about choosing exactly 2 of 3 properties?",
+      "ground_truth": false,
+      "category": "distributed_systems",
+      "difficulty": "hard",
+      "majority_answer": true,
+      "majority_correct": false,
+      "agreement_count": 5,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        }
+      ]
+    },
+    {
+      "question": "Can a neural network with a single hidden layer approximate any continuous function?",
+      "ground_truth": true,
+      "category": "ml",
+      "difficulty": "hard",
+      "majority_answer": true,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "Is Redis single-threaded for command processing?",
+      "ground_truth": true,
+      "category": "databases",
+      "difficulty": "medium",
+      "majority_answer": true,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "Is consistent hashing guaranteed to produce a perfectly uniform distribution of keys across nodes?",
+      "ground_truth": false,
+      "category": "distributed_systems",
+      "difficulty": "hard",
+      "majority_answer": false,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        }
+      ]
+    },
+    {
+      "question": "In Python, is 'is' comparison between two integers always equivalent to '==' for values in the range -5 to 256?",
+      "ground_truth": true,
+      "category": "languages",
+      "difficulty": "hard",
+      "majority_answer": false,
+      "majority_correct": false,
+      "agreement_count": 4,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "Is gradient descent guaranteed to converge to the global minimum for any convex function with a sufficiently small constant learning rate?",
+      "ground_truth": true,
+      "category": "ml",
+      "difficulty": "hard",
+      "majority_answer": false,
+      "majority_correct": false,
+      "agreement_count": 5,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "Does adding an index to a database column always improve query performance for queries filtering on that column?",
+      "ground_truth": false,
+      "category": "databases",
+      "difficulty": "hard",
+      "majority_answer": false,
+      "majority_correct": true,
+      "agreement_count": 6,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        }
+      ]
+    },
+    {
+      "question": "Is the amortized time complexity of appending to a Python list O(1)?",
+      "ground_truth": true,
+      "category": "algorithms",
+      "difficulty": "hard",
+      "majority_answer": true,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "Can a deadlock occur in a system that uses only a single shared mutex?",
+      "ground_truth": false,
+      "category": "architecture",
+      "difficulty": "expert",
+      "majority_answer": false,
+      "majority_correct": true,
+      "agreement_count": 4,
+      "consensus_confidence": 0.85,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.7,
+          "correct": true,
+          "brier": 0.48999999999999994
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        }
+      ]
+    },
+    {
+      "question": "Is it possible for a correctly-implemented TLS 1.3 connection to be vulnerable to a replay attack?",
+      "ground_truth": true,
+      "category": "security",
+      "difficulty": "expert",
+      "majority_answer": false,
+      "majority_correct": false,
+      "agreement_count": 4,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        }
+      ]
+    },
+    {
+      "question": "In a microservices architecture, does the Saga pattern guarantee that all services will eventually reach a consistent state after a failure?",
+      "ground_truth": false,
+      "category": "architecture",
+      "difficulty": "expert",
+      "majority_answer": false,
+      "majority_correct": true,
+      "agreement_count": 7,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        }
+      ]
+    },
+    {
+      "question": "Can a Bloom filter produce false negatives (reporting an element is not in the set when it actually is)?",
+      "ground_truth": false,
+      "category": "algorithms",
+      "difficulty": "hard",
+      "majority_answer": false,
+      "majority_correct": true,
+      "agreement_count": 6,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.81
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.81
+        }
+      ]
+    },
+    {
+      "question": "Is the output of a transformer model's self-attention layer invariant to the ordering of input tokens?",
+      "ground_truth": true,
+      "category": "ml",
+      "difficulty": "expert",
+      "majority_answer": false,
+      "majority_correct": false,
+      "agreement_count": 5,
+      "consensus_confidence": 0.9,
+      "providers": [
+        {
+          "name": "claude",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gemini",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "grok",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "deepseek",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "qwq",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "gpt",
+          "confidence": 0.9,
+          "correct": false,
+          "brier": 0.009999999999999995
+        },
+        {
+          "name": "perplexity",
+          "confidence": 0.9,
+          "correct": true,
+          "brier": 0.009999999999999995
+        }
+      ]
+    }
+  ],
+  "elapsed_seconds": 1815.230063199997
+}

@@ -69,6 +69,7 @@ from epistemic_agents.calibration_games import (
 from epistemic_agents.ledger import classify_domain
 from epistemic_agents.memory import EpistemicMemory, MemoryResult
 from epistemic_agents.auto_verify import classify_verifiable, auto_verify
+from epistemic_agents.consensus_audit import ConsensusAuditReport, ConsensusResult, run_consensus_audit
 
 __all__ = [
     # Core epistemic protocol
@@ -193,4 +194,8 @@ __all__ = [
     # Auto-verify
     "classify_verifiable",
     "auto_verify",
+    # Consensus audit
+    "ConsensusAuditReport",
+    "ConsensusResult",
+    "run_consensus_audit",
 ]
