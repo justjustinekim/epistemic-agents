@@ -157,10 +157,13 @@ def run_panel_eval(
 
     try:
         panel = ModelPanel(providers)
-        positions = panel.debate(task, rounds=2)
+        rounds = panel.debate(task, rounds=2)
+
+        # debate() returns list[list[ProviderPosition]] — use final round
+        final_positions = rounds[-1] if rounds else []
 
         all_beliefs = []
-        for pos in positions:
+        for pos in final_positions:
             for b in pos.beliefs:
                 all_beliefs.append(b)
                 result.beliefs.append({"claim": b.claim, "confidence": b.effective_score})
@@ -172,8 +175,8 @@ def run_panel_eval(
             mean = result.avg_confidence
             result.confidence_spread = (sum((s - mean) ** 2 for s in scores) / len(scores)) ** 0.5
 
-        agreements = detect_agreements(positions)
-        tensions = detect_tensions(positions)
+        agreements = detect_agreements(final_positions)
+        tensions = detect_tensions(final_positions)
         result.n_agreements = len(agreements)
         result.n_tensions = len(tensions)
 
@@ -190,7 +193,7 @@ def run_adversarial_eval(task: str) -> EvalResult:
     start = time.time()
 
     try:
-        raw = client.raw_request(
+        raw = client.plain_request(
             model="sonnet",
             system=ADVERSARIAL_PROMPT,
             user_message=task,
@@ -224,7 +227,7 @@ def run_persona_eval(task: str) -> EvalResult:
     start = time.time()
 
     try:
-        raw = client.raw_request(
+        raw = client.plain_request(
             model="sonnet",
             system=PERSONA_PROMPT,
             user_message=task,
